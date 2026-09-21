@@ -39,10 +39,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚽ Avrupa Futbol Arşivi & Maç Listesi (2021 - 2026)")
-st.caption("Amerika ligleri hariç tutulmuş, Avrupa'nın önde gelen 20 ligi ve 5 yıllık tüm maç sonuçları.")
+st.title("⚽ Avrupa Futbol Arşivi & Genişletilmiş Maç Listesi (2021 - 2026)")
+st.caption("Seçilen ligin 2021'den 2026'ya kadar olan tüm sezonlarını toplu halde listeler.")
 
-# Amerika Olmayan, Seçkin 20 Avrupa Ligi + UEFA Turnuvaları
+# Avrupa'nın önde gelen 20 ligi
 LIGLER = {
     "🇹🇷 Türkiye - Süper Lig": 203,
     "🏴󠁧󠁢󠁥󠁮󠁧󠁿 İngiltere - Premier League": 39,
@@ -67,6 +67,7 @@ LIGLER = {
 }
 
 SEZON_SECENEKLERI = {
+    "🗓️ TÜM SEZONLAR (2021 - 2026)": "ALL",
     "2026": 2026,
     "2025": 2025,
     "2024": 2024,
@@ -75,19 +76,17 @@ SEZON_SECENEKLERI = {
     "2021": 2021
 }
 
-# Veri Çekme Fonksiyonu (Sadece Fikstür ve Sonuçlar - Oran yükü yok, çok hızlı!)
+# Tekil Sezon Veri Çekme Fonksiyonu
 @st.cache_data(ttl=86400)
-def api_maclari_getir(api_key, lig_id, sezon):
+def api_maclari_getir_tekil(api_key, lig_id, sezon):
     headers = {
         'x-apisports-key': api_key,
         'x-rapidapi-key': api_key
     }
-    
     url_fixtures = f"https://v3.football.api-sports.io/fixtures?league={lig_id}&season={sezon}"
     try:
         res_fix = requests.get(url_fixtures, headers=headers)
         data_fix = res_fix.json()
-        
         fixtures_raw = data_fix.get("response", [])
         if not fixtures_raw:
             return []
@@ -100,7 +99,6 @@ def api_maclari_getir(api_key, lig_id, sezon):
             g = item["goals"]
             score = item["score"]
 
-            # Sadece bitmiş maçları alıyoruz
             if f["status"]["short"] in ["FT", "AET", "PEN"]:
                 ev_gol = g["home"] if g["home"] is not None else 0
                 dep_gol = g["away"] if g["away"] is not None else 0
@@ -131,70 +129,82 @@ secilen_lig_key = st.sidebar.selectbox("Avrupa Ligi Seçin", list(LIGLER.keys())
 secilen_sezon_key = st.sidebar.selectbox("Sezon / Yıl Seçin", list(SEZON_SECENEKLERI.keys()))
 
 lig_id = LIGLER[secilen_lig_key]
-sezon = SEZON_SECENEKLERI[secilen_sezon_key]
+secim_degeri = SEZON_SECENEKLERI[secilen_sezon_key]
 
 st.sidebar.markdown("---")
-st.sidebar.info("💡 Bu ekranda seçtiğiniz ligin o sezondaki **tüm maçları, skorları ve genel istatistikleri** saniyesinde listelenir.")
+st.sidebar.info("💡 'TÜM SEZONLAR' seçildiğinde 2021'den 2026'ya kadar oynanan tüm maçlar tek seferde toplanır.")
 
-# Verileri Yükle
-if st.sidebar.button("🔍 Maçları Listele", type="primary"):
-    with st.spinner(f"{secilen_lig_key} ({sezon} Sezonu) maçları yükleniyor..."):
-        mac_listesi = api_maclari_getir(API_KEY, lig_id, sezon)
-        st.session_state['yuklenen_arsiv'] = mac_listesi
-        st.session_state['aktif_lig'] = secilen_lig_key
-        st.session_state['aktif_sezon'] = sezon
+# Verileri Yükle Butonu
+if st.sidebar.button("🔍 Arşivi Getir", type="primary"):
+    hedef_sezonlar = [2026, 2025, 2024, 2023, 2022, 2021] if secim_degeri == "ALL" else [secim_degeri]
+    
+    tum_toplanan_maclar = []
+    with st.spinner(f"{secilen_lig_key} için arşiv taranıyor..."):
+        for s in hedef_sezonlar:
+            m_list = api_maclari_getir_tekil(API_KEY, lig_id, s)
+            tum_toplanan_maclar.extend(m_list)
+            
+    st.session_state['yuklenen_arsiv'] = tum_toplanan_maclar
+    st.session_state['aktif_lig'] = secilen_lig_key
+    st.session_state['aktif_sezon_bilgi'] = secilen_sezon_key
 
 # Hafızada maç varsa göster
 if 'yuklenen_arsiv' in st.session_state and st.session_state['yuklenen_arsiv']:
     arsiv = st.session_state['yuklenen_arsiv']
     toplam_mac = len(arsiv)
     
-    ms1_sayisi = sum(1 for m in arsiv if m['ms_sonuc'] == '1')
-    ms0_sayisi = sum(1 for m in arsiv if m['ms_sonuc'] == 'X')
-    ms2_sayisi = sum(1 for m in arsiv if m['ms_sonuc'] == '2')
-    ust_sayisi = sum(1 for m in arsiv if m['toplam_gol'] > 2.5)
-    kg_sayisi = sum(1 for m in arsiv if m['kg_var'])
+    if toplam_mac > 0:
+        ms1_sayisi = sum(1 for m in arsiv if m['ms_sonuc'] == '1')
+        ms0_sayisi = sum(1 for m in arsiv if m['ms_sonuc'] == 'X')
+        ms2_sayisi = sum(1 for m in arsiv if m['ms_sonuc'] == '2')
+        ust_sayisi = sum(1 for m in arsiv if m['toplam_gol'] > 2.5)
+        kg_sayisi = sum(1 for m in arsiv if m['kg_var'])
 
-    # Özet Kartı
-    st.markdown(f"""
-    <div class="summary-card">
-        <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 6px;">
-            📊 {st.session_state['aktif_lig']} - {st.session_state['aktif_sezon']} Sezonu Özet İstatistikleri
-        </div>
-        <div style="font-size: 15px; color: #fff; margin-bottom: 10px;">
-            Toplam Oynanan Maç: <b>{toplam_mac}</b>
-        </div>
-        <div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px;">
-            <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS 1: %{round(ms1_sayisi/toplam_mac*100)} ({ms1_sayisi})</span>
-            <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS X: %{round(ms0_sayisi/toplam_mac*100)} ({ms0_sayisi})</span>
-            <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS 2: %{round(ms2_sayisi/toplam_mac*100)} ({ms2_sayisi})</span>
-            <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">2.5 Üst: %{round(ust_sayisi/toplam_mac*100)} ({ust_sayisi})</span>
-            <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">KG Var: %{round(kg_sayisi/toplam_mac*100)} ({kg_sayisi})</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.subheader("📋 Maç Listesi ve Sonuçlar")
-    
-    # Maçları listeleme (Performans için ilk 200 maçı göster, gerekirse artırılabilir)
-    for m in arsiv:
+        # Özet Kartı
         st.markdown(f"""
-        <div class="match-card">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <span style="font-size: 11px; color: #888;">{m['tarih']}</span>
-                    <div style="font-size: 15px; font-weight: bold; color: #fff; margin-top: 2px;">
-                        {m['ev_sahibi']} <span style="color: #81c784; margin: 0 6px;">vs</span> {m['deplasman']}
-                    </div>
-                </div>
-                <div style="text-align: right;">
-                    <span style="background-color: #1e2720; color: #4caf50; font-size: 15px; font-weight: bold; padding: 4px 10px; border-radius: 6px; border: 1px solid #2e7d32;">
-                        MS: {m['ms_skor']}
-                    </span>
-                    <span style="font-size: 11px; color: #aaa; display: block; margin-top: 4px;">(İY: {m['iy_skor']})</span>
-                </div>
+        <div class="summary-card">
+            <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 6px;">
+                📊 {st.session_state['aktif_lig']} — {st.session_state['aktif_sezon_bilgi']} Arşiv Özeti
+            </div>
+            <div style="font-size: 15px; color: #fff; margin-bottom: 10px;">
+                Toplam Maç Sayısı: <b>{toplam_mac}</b>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px;">
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS 1: %{round(ms1_sayisi/toplam_mac*100)} ({ms1_sayisi})</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS X: %{round(ms0_sayisi/toplam_mac*100)} ({ms0_sayisi})</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS 2: %{round(ms2_sayisi/toplam_mac*100)} ({ms2_sayisi})</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">2.5 Üst: %{round(ust_sayisi/toplam_mac*100)}</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">KG Var: %{round(kg_sayisi/toplam_mac*100)}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+        st.subheader("📋 Toplu Maç Arşivi")
+        
+        # Performans için son 300 maçı göster (Tümünü aynı anda basmak tarayıcıyı dondurabilir)
+        for m in arsiv[:300]:
+            st.markdown(f"""
+            <div class="match-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="font-size: 11px; color: #888;">{m['tarih']} ({m['sezon']} Sezonu)</span>
+                        <div style="font-size: 15px; font-weight: bold; color: #fff; margin-top: 2px;">
+                            {m['ev_sahibi']} <span style="color: #81c784; margin: 0 6px;">vs</span> {m['deplasman']}
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="background-color: #1e2720; color: #4caf50; font-size: 15px; font-weight: bold; padding: 4px 10px; border-radius: 6px; border: 1px solid #2e7d32;">
+                            MS: {m['ms_skor']}
+                        </span>
+                        <span style="font-size: 11px; color: #aaa; display: block; margin-top: 4px;">(İY: {m['iy_skor']})</span>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        if len(arsiv) > 300:
+            st.info(f"ℹ️ Performans amacıyla listenin ilk 300 maçı gösteriliyor (Toplam eşleşen: {len(arsiv)} maç).")
+    else:
+        st.warning("⚠️ Bu kriterlere uygun maç bulunamadı.")
 else:
-    st.info("👈 Sol menüden Avrupa ligini ve sezonu seçip **'Maçları Listele'** butonuna basarak arşivi görüntüleyebilirsin.")
+    st.info("👈 Sol menüden ligi ve sezonu seçip **'Arşivi Getir'** butonuna basarak binlerce maçı listeyebilirsin.")
