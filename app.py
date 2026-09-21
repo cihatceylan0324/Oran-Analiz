@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 
 # Sayfa Ayarları
-st.set_page_config(page_title="Sezon Sezon Futbol Arşivi ve Yükleyici", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Süper Lig 5 Yıllık Arşiv ve Oranlar", page_icon="⚽", layout="wide")
 
 # API-Football Anahtarınız
 API_KEY = "6872ad88365b79a00040ce0ce9c7ab6a"
@@ -15,7 +15,7 @@ st.markdown("""
         background-color: #0e0f11;
         color: #ffffff;
     }
-    .stSelectbox div, .stFileUploader div {
+    .stSelectbox div {
         background-color: #1a1b1e !important;
         color: #ffffff !important;
         border: 1px solid #2d2f34 !important;
@@ -29,45 +29,14 @@ st.markdown("""
         margin-bottom: 20px;
         font-family: sans-serif;
     }
-    .match-card {
-        background-color: #1a1b1e;
-        border-radius: 10px;
-        padding: 14px;
-        margin-bottom: 12px;
-        border: 1px solid #2d2f34;
-        font-family: sans-serif;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚽ Sezonluk Futbol Arşivi & Excel Yönetim Merkezi")
-st.caption("İstediğin sezonu tek tek indir, sonra elindeki CSV dosyalarını sisteme yükleyip birleştir!")
-
-# Avrupa'nın önde gelen 20 ligi
-LIGLER = {
-    "🇹🇷 Türkiye - Süper Lig": 203,
-    "🏴󠁧󠁢󠁥󠁮󠁧󠁿 İngiltere - Premier League": 39,
-    "🇪🇸 İspanya - La Liga": 140,
-    "🇮🇹 İtalya - Serie A": 135,
-    "🇩🇪 Almanya - Bundesliga": 78,
-    "🇫🇷 Fransa - Ligue 1": 61,
-    "🇳🇱 Hollanda - Eredivisie": 88,
-    "🇵🇹 Portekiz - Liga Portugal": 94,
-    "🇧🇪 Belçika - Pro League": 144,
-    "🏴󠁧󠁢󠁳󠁣󠁴󠁿 İskoçya - Premiership": 179,
-    "🇦🇹 Avusturya - Bundesliga": 218,
-    "🇨🇭 İsviçre - Super League": 207,
-    "🇬🇷 Yunanistan - Super League": 197,
-    "🇩🇰 Danimarka - Superliga": 119,
-    "🇸🇪 İsveç - Allsvenskan": 113,
-    "🇳🇴 Norveç - Eliteserien": 103,
-    "🇵🇱 Polonya - Ekstraklasa": 106,
-    "🇨🇿 Çekya - 1. Liga": 345,
-    "🇭🇷 Hırvatistan - HNL": 210,
-    "🇪🇺 UEFA Şampiyonlar Ligi": 2
-}
+st.title("⚽ Süper Lig 5 Yıllık Maç Arşivi & Bahis Oranları (2021 - 2026)")
+st.caption("2021, 2022, 2023, 2024, 2025 ve 2026 sezonlarındaki tüm Süper Lig maçlarını oranlarıyla birlikte Excel'e indir.")
 
 SEZON_SECENEKLERI = {
+    "🗓️ TÜM SEZONLAR (2021 - 2026)": "ALL",
     "2026": 2026,
     "2025": 2025,
     "2024": 2024,
@@ -76,14 +45,15 @@ SEZON_SECENEKLERI = {
     "2021": 2021
 }
 
-# Tekil Sezon Veri Çekme Fonksiyonu
+# Tekil Sezon ve Oran Çekme Fonksiyonu
 @st.cache_data(ttl=86400)
-def api_maclari_getir_tekil(api_key, lig_id, sezon):
+def api_superlig_mac_ve_oran_getir(api_key, sezon):
     headers = {
         'x-apisports-key': api_key,
         'x-rapidapi-key': api_key
     }
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?league={lig_id}&season={sezon}"
+    # 203 numarası Türkiye Süper Lig ID'sidir
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?league=203&season={sezon}"
     try:
         res_fix = requests.get(url_fixtures, headers=headers)
         data_fix = res_fix.json()
@@ -98,6 +68,7 @@ def api_maclari_getir_tekil(api_key, lig_id, sezon):
             t = item["teams"]
             g = item["goals"]
             score = item["score"]
+            fixture_id = f["id"]
 
             if f["status"]["short"] in ["FT", "AET", "PEN"]:
                 ev_gol = g["home"] if g["home"] is not None else 0
@@ -107,6 +78,26 @@ def api_maclari_getir_tekil(api_key, lig_id, sezon):
                 ms_sonuc = "1" if ev_gol > dep_gol else ("2" if dep_gol > ev_gol else "X")
                 kg_var = (ev_gol > 0) and (dep_gol > 0)
 
+                # Oran çekme sorgusu (Maç Sonucu 1x2 Oranları - Bookmaker ID: 6 genellikle Bet365 veya benzeri ana sağlayıcıdır)
+                oran_1, oran_x, oran_2 = "", "", ""
+                try:
+                    url_odds = f"https://v3.football.api-sports.io/odds?fixture={fixture_id}"
+                    res_odds = requests.get(url_odds, headers=headers)
+                    data_odds = res_odds.json().get("response", [])
+                    if data_odds:
+                        bookmakers = data_odds[0].get("bookmakers", [])
+                        if bookmakers:
+                            bets = bookmakers[0].get("bets", [])
+                            for bet in bets:
+                                if bet.get("id") == 1: # 1: Match Winner (Maç Sonucu)
+                                    values = bet.get("values", [])
+                                    for v in values:
+                                        if v.get("value") == "Home": oran_1 = v.get("odd")
+                                        elif v.get("value") == "Draw": oran_x = v.get("odd")
+                                        elif v.get("value") == "Away": oran_2 = v.get("odd")
+                except Exception:
+                    pass
+
                 maclar.append({
                     "Tarih": f["date"][:10],
                     "Sezon": sezon,
@@ -115,6 +106,9 @@ def api_maclari_getir_tekil(api_key, lig_id, sezon):
                     "Deplasman": t["away"]["name"],
                     "MS Skor": f"{ev_gol} - {dep_gol}",
                     "IY Skor": f"{score['halftime']['home'] or 0} - {score['halftime']['away'] or 0}",
+                    "MS Oran 1": oran_1,
+                    "MS Oran X": oran_x,
+                    "MS Oran 2": oran_2,
                     "MS Sonucu": ms_sonuc,
                     "Toplam Gol": toplam_gol,
                     "KG Var": "Evet" if kg_var else "Yok"
@@ -124,77 +118,73 @@ def api_maclari_getir_tekil(api_key, lig_id, sezon):
         return []
 
 # Sol Menü
-st.sidebar.header("📥 1. Adım: Sezon Sezon Veri İndir")
-secilen_lig_key = st.sidebar.selectbox("Avrupa Ligi Seçin", list(LIGLER.keys()))
-secilen_sezon_key = st.sidebar.selectbox("Tekil Sezon Seçin", list(SEZON_SECENEKLERI.keys()))
-
-lig_id = LIGLER[secilen_lig_key]
-secim_sezon = SEZON_SECENEKLERI[secilen_sezon_key]
-
-if st.sidebar.button("🔍 Bu Sezonu Çek ve İndir", type="primary"):
-    with st.spinner(f"{secilen_lig_key} ({secim_sezon}) maçları taranıyor..."):
-        m_list = api_maclari_getir_tekil(API_KEY, lig_id, secim_sezon)
-        if m_list:
-            df_tekil = pd.DataFrame(m_list)
-            st.session_state['son_indirilen_df'] = df_tekil
-            st.session_state['son_dosya_adi'] = f"{secilen_lig_key.replace(' ', '_').replace('-', '')}_{secim_sezon}.csv"
-            st.success(f"✅ {len(m_list)} maç başarıyla çekildi!")
-        else:
-            st.warning("⚠️ Bu sezona ait maç bulunamadı.")
-
-# Eğer indirilecek veri varsa butonu göster
-if 'son_indirilen_df' in st.session_state:
-    csv_data = st.session_state['son_indirilen_df'].to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-    st.sidebar.download_button(
-        label=f"💾 {secilen_sezon} Dosyasını İndir",
-        data=csv_data,
-        file_name=st.session_state['son_dosya_adi'],
-        mime="text/csv"
-    )
+st.sidebar.header("⚙️ Süper Lig Arşiv Ayarları")
+secilen_sezon_key = st.sidebar.selectbox("Sezon / Yıl Aralığı Seçin", list(SEZON_SECENEKLERI.keys()))
+secim_degeri = SEZON_SECENEKLERI[secilen_sezon_key]
 
 st.sidebar.markdown("---")
-st.sidebar.header("📂 2. Adım: Dosyaları Geri Yükle")
-yuklenen_dosyalar = st.sidebar.file_uploader("Daha önce indirdiğin CSV dosyalarını seç (Birden fazla seçebilirsin)", type=["csv"], accept_multiple_files=True)
-
-# Yüklenen dosyaları işleme
-aktif_veri_kaynagi = None
-if yuklenen_dosyalar:
-    tum_df_listesi = []
-    for dosya in yuklenen_dosyalar:
-        df_temp = pd.read_csv(dosya)
-        tum_df_listesi.append(df_temp)
-    if tum_df_listesi:
-        aktif_veri_kaynagi = pd.concat(tum_df_listesi, ignore_index=True)
-
-# Ana Ekran Gösterimi
-if aktif_veri_kaynagi is not None and not aktif_veri_kaynagi.empty:
-    toplam_mac = len(aktif_veri_kaynagi)
-    st.success(f"📁 Sisteme yüklenen dosyalardan toplam **{toplam_mac} adet maç** başarıyla birleştirildi!")
+if st.sidebar.button("🔍 Süper Lig Arşivini Derle", type="primary"):
+    hedef_sezonlar = [2026, 2025, 2024, 2023, 2022, 2021] if secim_degeri == "ALL" else [secim_degeri]
     
-    ms1_sayisi = sum(1 for m in aktif_veri_kaynagi['MS Sonucu'] if m == '1')
-    ms0_sayisi = sum(1 for m in aktif_veri_kaynagi['MS Sonucu'] == 'X' if m) # Güvenli sayım
-    # Alternatif temiz sayım:
-    ms0_sayisi = len(aktif_veri_kaynagi[aktif_veri_kaynagi['MS Sonucu'] == 'X'])
-    ms2_sayisi = len(aktif_veri_kaynagi[aktif_veri_kaynagi['MS Sonucu'] == '2'])
-    ust_sayisi = len(aktif_veri_kaynagi[aktif_veri_kaynagi['Toplam Gol'] > 2.5])
-    kg_sayisi = len(aktif_veri_kaynagi[aktif_veri_kaynagi['KG Var'] == 'Evet'])
+    tum_toplanan_maclar = []
+    with st.spinner("Süper Lig maçları ve bahis oranları arka planda toplanıyor (Oran sorguları nedeniyle biraz sürebilir)..."):
+        for s in hedef_sezonlar:
+            m_list = api_superlig_mac_ve_oran_getir(API_KEY, s)
+            tum_toplanan_maclar.extend(m_list)
+            
+    st.session_state['superlig_arsiv'] = tum_toplanan_maclar
+    st.session_state['aktif_secim_adi'] = secilen_sezon_key
 
-    st.markdown(f"""
-    <div class="summary-card">
-        <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 6px;">
-            📊 Yüklenen Tüm Sezonların Birleşik İstatistikleri
-        </div>
-        <div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; margin-top: 10px;">
-            <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS 1: %{round(ms1_sayisi/toplam_mac*100)} ({ms1_sayisi})</span>
-            <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS X: %{round(ms0_sayisi/toplam_mac*100)} ({ms0_sayisi})</span>
-            <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS 2: %{round(ms2_sayisi/toplam_mac*100)} ({ms2_sayisi})</span>
-            <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">2.5 Üst: %{round(ust_sayisi/toplam_mac*100)}</span>
-            <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">KG Var: %{round(kg_sayisi/toplam_mac*100)}</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+# Hafızada maç varsa göster ve Excel İndir butonu sun
+if 'superlig_arsiv' in st.session_state and st.session_state['superlig_arsiv']:
+    arsiv = st.session_state['superlig_arsiv']
+    toplam_mac = len(arsiv)
+    
+    if toplam_mac > 0:
+        df = pd.DataFrame(arsiv)
+        
+        # CSV Verisi Hazırlığı
+        csv_verisi = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+        dosya_adi = f"SuperLig_Arsiv_{st.session_state['aktif_secim_adi'].replace(' ', '_')}.csv"
 
-    st.subheader("📋 Birleştirilmiş Maç Tablosu")
-    st.dataframe(aktif_veri_kaynagi, use_container_width=True, height=500)
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.success(f"🎉 Süper Lig için toplam **{toplam_mac} adet maç** ve oranları başarıyla derlendi!")
+        with col2:
+            st.download_button(
+                label="📥 Excel (CSV) Olarak İndir",
+                data=csv_verisi,
+                file_name=dosya_adi,
+                mime="text/csv",
+                type="primary"
+            )
+
+        # Özet İstatistikler
+        ms1_sayisi = len(df[df['MS Sonucu'] == '1'])
+        ms0_sayisi = len(df[df['MS Sonucu'] == 'X'])
+        ms2_sayisi = len(df[df['MS Sonucu'] == '2'])
+        ust_sayisi = len(df[df['Toplam Gol'] > 2.5])
+        kg_sayisi = len(df[df['KG Var'] == 'Evet'])
+
+        st.markdown(f"""
+        <div class="summary-card">
+            <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 6px;">
+                📊 Süper Lig — {st.session_state['aktif_secim_adi']} Genel İstatistikler
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; margin-top: 10px;">
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">Toplam Maç: {toplam_mac}</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS 1: %{round(ms1_sayisi/toplam_mac*100)} ({ms1_sayisi})</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS X: %{round(ms0_sayisi/toplam_mac*100)} ({ms0_sayisi})</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS 2: %{round(ms2_sayisi/toplam_mac*100)} ({ms2_sayisi})</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">2.5 Üst: %{round(ust_sayisi/toplam_mac*100)}</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">KG Var: %{round(kg_sayisi/toplam_mac*100)}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.subheader("📋 Arşiv ve Oran Tablosu Önizlemesi")
+        st.dataframe(df, use_container_width=True, height=450)
+    else:
+        st.warning("⚠️ Seçilen kriterde maç bulunamadı.")
 else:
-    st.info("👈 Sol menüden sezon seçip tek tek indirebilir, ya da indirdiğin dosyaları **'2. Adım'** kısmından yükleyerek birleşik olarak ekranda görebilirsin.")
+    st.info("👈 Sol menüden **'TÜM SEZONLAR (2021 - 2026)'** veya istediğin tek bir yılı seçip **'Süper Lig Arşivini Derle'** butonuna basarak tüm maçları ve oranları Excel'e indirebilirsin.")
