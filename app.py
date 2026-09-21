@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 
 # Sayfa Ayarları
-st.set_page_config(page_title="Bundesliga Hızlı Arşiv", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="La Liga Hızlı Arşiv", page_icon="⚽", layout="wide")
 
 # API-Football Anahtarınız
 API_KEY = "6872ad88365b79a00040ce0ce9c7ab6a"
@@ -32,8 +32,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚽ Almanya Bundesliga 5 Yıllık Hızlı Maç Arşivi (2021 - 2026)")
-st.caption("Bekleme yapmadan, tüm Bundesliga maçlarını ve istatistiklerini anında Excel'e (CSV) aktar.")
+st.title("⚽ İspanya La Liga 5 Yıllık Hızlı Maç Arşivi (2021 - 2026)")
+st.caption("Bekleme yapmadan, tüm La Liga maçlarını ve istatistiklerini anında Excel'e (CSV) aktar.")
 
 SEZON_SECENEKLERI = {
     "🗓️ TÜM SEZONLAR (2021 - 2026)": "ALL",
@@ -45,14 +45,14 @@ SEZON_SECENEKLERI = {
     "2021": 2021
 }
 
-# Hızlı Veri Çekme Fonksiyonu (Bundesliga ID: 78)
+# Hızlı Veri Çekme Fonksiyonu (La Liga ID: 140)
 @st.cache_data(ttl=86400)
-def api_bundesliga_hizli_getir(api_key, sezon):
+def api_laliga_hizli_getir(api_key, sezon):
     headers = {
         'x-apisports-key': api_key,
         'x-rapidapi-key': api_key
     }
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?league=78&season={sezon}"
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?league=140&season={sezon}"
     try:
         res_fix = requests.get(url_fixtures, headers=headers)
         data_fix = res_fix.json()
@@ -98,21 +98,21 @@ secilen_sezon_key = st.sidebar.selectbox("Sezon / Yıl Aralığı Seçin", list(
 secim_degeri = SEZON_SECENEKLERI[secilen_sezon_key]
 
 st.sidebar.markdown("---")
-if st.sidebar.button("⚡ Bundesliga Hızlı Arşivi Derle", type="primary"):
+if st.sidebar.button("⚡ La Liga Hızlı Arşivi Derle", type="primary"):
     hedef_sezonlar = [2026, 2025, 2024, 2023, 2022, 2021] if secim_degeri == "ALL" else [secim_degeri]
     
     tum_toplanan_maclar = []
-    with st.spinner("Bundesliga maçları hızla yükleniyor..."):
+    with st.spinner("La Liga maçları hızla yükleniyor..."):
         for s in hedef_sezonlar:
-            m_list = api_bundesliga_hizli_getir(API_KEY, s)
+            m_list = api_laliga_hizli_getir(API_KEY, s)
             tum_toplanan_maclar.extend(m_list)
             
-    st.session_state['bundesliga_hizli_arsiv'] = tum_toplanan_maclar
+    st.session_state['laliga_hizli_arsiv'] = tum_toplanan_maclar
     st.session_state['aktif_secim_adi'] = secilen_sezon_key
 
 # Hafızada maç varsa göster ve Excel İndir butonu sun
-if 'bundesliga_hizli_arsiv' in st.session_state and st.session_state['bundesliga_hizli_arsiv']:
-    arsiv = st.session_state['bundesliga_hizli_arsiv']
+if 'laliga_hizli_arsiv' in st.session_state and st.session_state['laliga_hizli_arsiv']:
+    arsiv = st.session_state['laliga_hizli_arsiv']
     toplam_mac = len(arsiv)
     
     if toplam_mac > 0:
@@ -120,11 +120,11 @@ if 'bundesliga_hizli_arsiv' in st.session_state and st.session_state['bundesliga
         
         # CSV Verisi Hazırlığı
         csv_verisi = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        dosya_adi = f"Bundesliga_HizliArsiv_{st.session_state['aktif_secim_adi'].replace(' ', '_')}.csv"
+        dosya_adi = f"LaLiga_HizliArsiv_{st.session_state['aktif_secim_adi'].replace(' ', '_')}.csv"
 
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.success(f"🎉 Bundesliga için toplam **{toplam_mac} adet maç** başarıyla ve anında derlendi!")
+            st.success(f"🎉 La Liga için toplam **{toplam_mac} adet maç** başarıyla ve anında derlendi!")
         with col2:
             st.download_button(
                 label="📥 Excel (CSV) İndir",
@@ -144,7 +144,7 @@ if 'bundesliga_hizli_arsiv' in st.session_state and st.session_state['bundesliga
         st.markdown(f"""
         <div class="summary-card">
             <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 6px;">
-                📊 Bundesliga — {st.session_state['aktif_secim_adi']} Genel İstatistikler
+                📊 La Liga — {st.session_state['aktif_secim_adi']} Genel İstatistikler
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; margin-top: 10px;">
                 <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">Toplam Maç: {toplam_mac}</span>
@@ -162,4 +162,4 @@ if 'bundesliga_hizli_arsiv' in st.session_state and st.session_state['bundesliga
     else:
         st.warning("⚠️ Seçilen kriterde maç bulunamadı.")
 else:
-    st.info("👈 Sol menüden **'TÜM SEZONLAR (2021 - 2026)'** veya istediğin yılı seçip **'Bundesliga Hızlı Arşivi Derle'** butonuna basarak anında indirebilirsin.")
+    st.info("👈 Sol menüden **'TÜM SEZONLAR (2021 - 2026)'** veya istediğin yılı seçip **'La Liga Hızlı Arşivi Derle'** butonuna basarak anında indirebilirsin.")
