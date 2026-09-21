@@ -90,7 +90,7 @@ LIGLER = {
     "🇪🇺 UEFA Konferans Ligi": 848
 }
 
-SEZONLAR = [2025, 2024, 2023, 2022, 2021, 2020]
+SEZONLAR = [2026,2025, 2024, 2023, 2022, 2021]
 
 # API'den Veri Çekme Fonksiyonu
 @st.cache_data(ttl=3600)
