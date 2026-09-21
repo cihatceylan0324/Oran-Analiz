@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 
 # Sayfa Ayarları
-st.set_page_config(page_title="Süper Lig 5 Yıllık Arşiv ve Oranlar", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Premier League 5 Yıllık Arşiv ve Oranlar", page_icon="⚽", layout="wide")
 
 # API-Football Anahtarınız
 API_KEY = "6872ad88365b79a00040ce0ce9c7ab6a"
@@ -32,8 +32,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚽ Süper Lig 5 Yıllık Maç Arşivi & Bahis Oranları (2021 - 2026)")
-st.caption("2021, 2022, 2023, 2024, 2025 ve 2026 sezonlarındaki tüm Süper Lig maçlarını oranlarıyla birlikte Excel'e indir.")
+st.title("⚽ İngiltere Premier League 5 Yıllık Arşiv & Oranlar (2021 - 2026)")
+st.caption("2021'den 2026'ya kadar tüm Premier League maçlarını ve bahis oranlarını Excel'e aktar.")
 
 SEZON_SECENEKLERI = {
     "🗓️ TÜM SEZONLAR (2021 - 2026)": "ALL",
@@ -45,15 +45,15 @@ SEZON_SECENEKLERI = {
     "2021": 2021
 }
 
-# Tekil Sezon ve Oran Çekme Fonksiyonu
+# Premier League (Lig ID: 39) Maç ve Oran Çekme Fonksiyonu
 @st.cache_data(ttl=86400)
-def api_superlig_mac_ve_oran_getir(api_key, sezon):
+def api_premierleague_mac_ve_oran_getir(api_key, sezon):
     headers = {
         'x-apisports-key': api_key,
         'x-rapidapi-key': api_key
     }
-    # 203 numarası Türkiye Süper Lig ID'sidir
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?league=203&season={sezon}"
+    # 39 numarası İngiltere Premier League ID'sidir
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?league=39&season={sezon}"
     try:
         res_fix = requests.get(url_fixtures, headers=headers)
         data_fix = res_fix.json()
@@ -78,7 +78,7 @@ def api_superlig_mac_ve_oran_getir(api_key, sezon):
                 ms_sonuc = "1" if ev_gol > dep_gol else ("2" if dep_gol > ev_gol else "X")
                 kg_var = (ev_gol > 0) and (dep_gol > 0)
 
-                # Oran çekme sorgusu (Maç Sonucu 1x2 Oranları - Bookmaker ID: 6 genellikle Bet365 veya benzeri ana sağlayıcıdır)
+                # Oran çekme sorgusu (Maç Sonucu 1x2 Oranları)
                 oran_1, oran_x, oran_2 = "", "", ""
                 try:
                     url_odds = f"https://v3.football.api-sports.io/odds?fixture={fixture_id}"
@@ -118,26 +118,26 @@ def api_superlig_mac_ve_oran_getir(api_key, sezon):
         return []
 
 # Sol Menü
-st.sidebar.header("⚙️ Süper Lig Arşiv Ayarları")
+st.sidebar.header("⚙️ Premier League Ayarları")
 secilen_sezon_key = st.sidebar.selectbox("Sezon / Yıl Aralığı Seçin", list(SEZON_SECENEKLERI.keys()))
 secim_degeri = SEZON_SECENEKLERI[secilen_sezon_key]
 
 st.sidebar.markdown("---")
-if st.sidebar.button("🔍 Süper Lig Arşivini Derle", type="primary"):
+if st.sidebar.button("🔍 Premier League Arşivini Derle", type="primary"):
     hedef_sezonlar = [2026, 2025, 2024, 2023, 2022, 2021] if secim_degeri == "ALL" else [secim_degeri]
     
     tum_toplanan_maclar = []
-    with st.spinner("Süper Lig maçları ve bahis oranları arka planda toplanıyor (Oran sorguları nedeniyle biraz sürebilir)..."):
+    with st.spinner("Premier League maçları ve bahis oranları arka planda toplanıyor (Oran sorguları nedeniyle biraz sürebilir)..."):
         for s in hedef_sezonlar:
-            m_list = api_superlig_mac_ve_oran_getir(API_KEY, s)
+            m_list = api_premierleague_mac_ve_oran_getir(API_KEY, s)
             tum_toplanan_maclar.extend(m_list)
             
-    st.session_state['superlig_arsiv'] = tum_toplanan_maclar
+    st.session_state['premier_arsiv'] = tum_toplanan_maclar
     st.session_state['aktif_secim_adi'] = secilen_sezon_key
 
 # Hafızada maç varsa göster ve Excel İndir butonu sun
-if 'superlig_arsiv' in st.session_state and st.session_state['superlig_arsiv']:
-    arsiv = st.session_state['superlig_arsiv']
+if 'premier_arsiv' in st.session_state and st.session_state['premier_arsiv']:
+    arsiv = st.session_state['premier_arsiv']
     toplam_mac = len(arsiv)
     
     if toplam_mac > 0:
@@ -145,11 +145,11 @@ if 'superlig_arsiv' in st.session_state and st.session_state['superlig_arsiv']:
         
         # CSV Verisi Hazırlığı
         csv_verisi = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        dosya_adi = f"SuperLig_Arsiv_{st.session_state['aktif_secim_adi'].replace(' ', '_')}.csv"
+        dosya_adi = f"PremierLeague_Arsiv_{st.session_state['aktif_secim_adi'].replace(' ', '_')}.csv"
 
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.success(f"🎉 Süper Lig için toplam **{toplam_mac} adet maç** ve oranları başarıyla derlendi!")
+            st.success(f"🎉 Premier League için toplam **{toplam_mac} adet maç** ve oranları başarıyla derlendi!")
         with col2:
             st.download_button(
                 label="📥 Excel (CSV) Olarak İndir",
@@ -169,7 +169,7 @@ if 'superlig_arsiv' in st.session_state and st.session_state['superlig_arsiv']:
         st.markdown(f"""
         <div class="summary-card">
             <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 6px;">
-                📊 Süper Lig — {st.session_state['aktif_secim_adi']} Genel İstatistikler
+                📊 Premier League — {st.session_state['aktif_secim_adi']} Genel İstatistikler
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; margin-top: 10px;">
                 <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">Toplam Maç: {toplam_mac}</span>
@@ -187,4 +187,4 @@ if 'superlig_arsiv' in st.session_state and st.session_state['superlig_arsiv']:
     else:
         st.warning("⚠️ Seçilen kriterde maç bulunamadı.")
 else:
-    st.info("👈 Sol menüden **'TÜM SEZONLAR (2021 - 2026)'** veya istediğin tek bir yılı seçip **'Süper Lig Arşivini Derle'** butonuna basarak tüm maçları ve oranları Excel'e indirebilirsin.")
+    st.info("👈 Sol menüden **'TÜM SEZONLAR (2021 - 2026)'** veya istediğin tek bir yılı seçip **'Premier League Arşivini Derle'** butonuna basarak tüm maçları ve oranları Excel'e indirebilirsin.")
