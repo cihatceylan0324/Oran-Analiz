@@ -1,7 +1,11 @@
 import streamlit as st
+import requests
 
 # Sayfa Ayarları
 st.set_page_config(page_title="Oran Analiz Merkezi", page_icon="⚽", layout="wide")
+
+# API-Football Anahtarınız
+API_KEY = "6872ad88365b79a00040ce0ce9c7ab6a"
 
 # Maçkolik Tarzı Karanlık Tema Tasarımı (CSS)
 st.markdown("""
@@ -55,29 +59,59 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚽ Birebir Oran Analiz Sistemi")
-st.caption("Maçkolik tarzı yeşil kazanan oran takibi")
+st.title("⚽ Birebir Oran Analiz Sistemi (API Canlı Veri)")
 
-# Örnek Maç Verileri
-if 'veri' not in st.session_state:
-    st.session_state.veri = {
-        "maclar": [
-            {
-                "tarih": "2026-09-20", "lig_adi": "Süper Lig",
-                "ev_sahibi": "Trabzonspor", "deplasman": "Galatasaray",
-                "ms_skor": "4 - 0", "iy_skor": "3-0",
-                "ms_sonuc": "1", "toplam_gol": 4.0, "kg_var": False,
-                "oranlar": {"ms1": 2.91, "ms0": 3.71, "ms2": 2.30, "ust_2_5": 1.65, "alt_2_5": 1.85, "kg_var": 1.55, "kg_yok": 2.05}
-            },
-            {
-                "tarih": "2026-09-18", "lig_adi": "Premier Lig",
-                "ev_sahibi": "Arsenal", "deplasman": "Chelsea",
-                "ms_skor": "2 - 1", "iy_skor": "1-0",
-                "ms_sonuc": "1", "toplam_gol": 3.0, "kg_var": True,
-                "oranlar": {"ms1": 2.91, "ms0": 3.71, "ms2": 2.30, "ust_2_5": 1.70, "alt_2_5": 1.80, "kg_var": 1.60, "kg_yok": 1.95}
-            }
-        ]
+# API'den Veri Çekme Fonksiyonu
+@st.cache_data(ttl=3600)
+def api_maclari_getir(api_key, lig_id=203, sezon=2024):
+    url = f"https://v3.football.api-sports.io/fixtures?league={lig_id}&season={sezon}"
+    headers = {
+        'x-rapidapi-host': "v3.football.api-sports.io",
+        'x-rapidapi-key': api_key
     }
+    try:
+        res = requests.get(url, headers=headers)
+        data = res.json()
+        maclar = []
+        if "response" in data:
+            for item in data["response"]:
+                f = item["fixture"]
+                l = item["league"]
+                t = item["teams"]
+                g = item["goals"]
+                score = item["score"]
+
+                if f["status"]["short"] in ["FT", "AET", "PEN"]:
+                    ev_gol = g["home"] if g["home"] is not None else 0
+                    dep_gol = g["away"] if g["away"] is not None else 0
+                    toplam_gol = ev_gol + dep_gol
+
+                    ms_sonuc = "1" if ev_gol > dep_gol else ("2" if dep_gol > ev_gol else "X")
+                    kg_var = (ev_gol > 0) and (dep_gol > 0)
+
+                    # Örnek oran haritası
+                    oranlar = {
+                        "ms1": 2.91, "ms0": 3.71, "ms2": 2.30,
+                        "ust_2_5": 1.65, "alt_2_5": 1.85,
+                        "kg_var": 1.55, "kg_yok": 2.05
+                    }
+
+                    maclar.append({
+                        "tarih": f["date"][:10],
+                        "lig_adi": l["name"],
+                        "ev_sahibi": t["home"]["name"],
+                        "deplasman": t["away"]["name"],
+                        "ms_skor": f"{ev_gol} - {dep_gol}",
+                        "iy_skor": f"{score['halftime']['home'] or 0}-{score['halftime']['away'] or 0}",
+                        "ms_sonuc": ms_sonuc,
+                        "toplam_gol": toplam_gol,
+                        "kg_var": kg_var,
+                        "oranlar": oranlar
+                    })
+        return maclar
+    except Exception as e:
+        st.error(f"API Bağlantı Hatası: {e}")
+        return []
 
 # Sol Menü / Oran Filtreleri
 st.sidebar.header("🎯 Oran Filtreleri")
@@ -95,6 +129,13 @@ col6, col7 = st.sidebar.columns(2)
 kg_var = col6.number_input("KG VAR", value=0.0, step=0.01, format="%.2f")
 kg_yok = col7.number_input("KG YOK", value=0.0, step=0.01, format="%.2f")
 
+# Lig Seçimi
+lig_secimi = st.sidebar.selectbox("Lig Seçin", ["Süper Lig (Türkiye)", "Premier League (İngiltere)", "La Liga (İspanya)"])
+lig_id_map = {"Süper Lig (Türkiye)": 203, "Premier League (İngiltere)": 39, "La Liga (İspanya)": 140}
+
+# Verileri Çek
+yuklenen_maclar = api_maclari_getir(API_KEY, lig_id=lig_id_map[lig_secimi], sezon=2024)
+
 kriterler = {
     "ms1": ms1 if ms1 > 0 else None,
     "ms0": ms0 if ms0 > 0 else None,
@@ -106,18 +147,19 @@ kriterler = {
 }
 aktif_filtreler = {k: v for k, v in kriterler.items() if v is not None}
 
-# Sonuç Ekranı
-if not aktif_filtreler:
-    st.info("👈 Sol taraftaki menüden aratmak istediğiniz oranları giriniz.")
+if not yuklenen_maclar:
+    st.info("🔄 API'den veriler çekiliyor veya seçilen ligde maç bulunamadı...")
+elif not aktif_filtreler:
+    st.info(f"👈 {lig_secimi} liginde toplam {len(yuklenen_maclar)} maç yüklendi. Sol menüden oran girerek analiz yapabilirsiniz.")
 else:
     esleseler = []
-    for mac in st.session_state.veri.get("maclar", []):
+    for mac in yuklenen_maclar:
         o = mac.get("oranlar", {})
         if all(o.get(k) == v for k, v in aktif_filtreler.items()):
             esleseler.append(mac)
 
     if not esleseler:
-        st.warning("⚠️ Veritabanında bu oran kombinasyonuna uygun maç bulunamadı.")
+        st.warning("⚠️ Seçilen lig ve oran kombinasyonuna uygun maç bulunamadı.")
     else:
         toplam = len(esleseler)
         ms1_cnt = sum(1 for m in esleseler if m['ms_sonuc'] == '1')
