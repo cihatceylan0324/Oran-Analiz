@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 
 # Sayfa Ayarları
-st.set_page_config(page_title="Eliteserien Hızlı Arşiv", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Ekstraklasa Hızlı Arşiv", page_icon="⚽", layout="wide")
 
 # API-Football Anahtarınız
 API_KEY = "6872ad88365b79a00040ce0ce9c7ab6a"
@@ -32,8 +32,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚽ Norveç Eliteserien 5 Yıllık Hızlı Maç Arşivi (2021 - 2026)")
-st.caption("Bekleme yapmadan, tüm Eliteserien maçlarını ve istatistiklerini anında Excel'e (CSV) aktar.")
+st.title("⚽ Polonya Ekstraklasa 5 Yıllık Hızlı Maç Arşivi (2021 - 2026)")
+st.caption("Bekleme yapmadan, tüm Ekstraklasa maçlarını ve istatistiklerini anında Excel'e (CSV) aktar.")
 
 SEZON_SECENEKLERI = {
     "🗓️ TÜM SEZONLAR (2021 - 2026)": "ALL",
@@ -45,14 +45,14 @@ SEZON_SECENEKLERI = {
     "2021": 2021
 }
 
-# Hızlı Veri Çekme Fonksiyonu (Norveç Eliteserien ID: 103)
+# Hızlı Veri Çekme Fonksiyonu (Polonya Ekstraklasa ID: 106)
 @st.cache_data(ttl=86400)
-def api_norvec_hizli_getir(api_key, sezon):
+def api_polonya_hizli_getir(api_key, sezon):
     headers = {
         'x-apisports-key': api_key,
         'x-rapidapi-key': api_key
     }
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?league=103&season={sezon}"
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?league=106&season={sezon}"
     try:
         res_fix = requests.get(url_fixtures, headers=headers)
         data_fix = res_fix.json()
@@ -98,21 +98,21 @@ secilen_sezon_key = st.sidebar.selectbox("Sezon / Yıl Aralığı Seçin", list(
 secim_degeri = SEZON_SECENEKLERI[secilen_sezon_key]
 
 st.sidebar.markdown("---")
-if st.sidebar.button("⚡ Eliteserien Hızlı Arşivi Derle", type="primary"):
+if st.sidebar.button("⚡ Ekstraklasa Hızlı Arşivi Derle", type="primary"):
     hedef_sezonlar = [2026, 2025, 2024, 2023, 2022, 2021] if secim_degeri == "ALL" else [secim_degeri]
     
     tum_toplanan_maclar = []
-    with st.spinner("Norveç Eliteserien maçları hızla yükleniyor..."):
+    with st.spinner("Polonya Ekstraklasa maçları hızla yükleniyor..."):
         for s in hedef_sezonlar:
-            m_list = api_norvec_hizli_getir(API_KEY, s)
+            m_list = api_polonya_hizli_getir(API_KEY, s)
             tum_toplanan_maclar.extend(m_list)
             
-    st.session_state['norvec_hizli_arsiv'] = tum_toplanan_maclar
+    st.session_state['polonya_hizli_arsiv'] = tum_toplanan_maclar
     st.session_state['aktif_secim_adi'] = secilen_sezon_key
 
 # Hafızada maç varsa göster ve Excel İndir butonu sun
-if 'norvec_hizli_arsiv' in st.session_state and st.session_state['norvec_hizli_arsiv']:
-    arsiv = st.session_state['norvec_hizli_arsiv']
+if 'polonya_hizli_arsiv' in st.session_state and st.session_state['polonya_hizli_arsiv']:
+    arsiv = st.session_state['polonya_hizli_arsiv']
     toplam_mac = len(arsiv)
     
     if toplam_mac > 0:
@@ -120,11 +120,11 @@ if 'norvec_hizli_arsiv' in st.session_state and st.session_state['norvec_hizli_a
         
         # CSV Verisi Hazırlığı
         csv_verisi = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        dosya_adi = f"Eliteserien_HizliArsiv_{st.session_state['aktif_secim_adi'].replace(' ', '_')}.csv"
+        dosya_adi = f"Ekstraklasa_HizliArsiv_{st.session_state['aktif_secim_adi'].replace(' ', '_')}.csv"
 
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.success(f"🎉 Norveç Eliteserien için toplam **{toplam_mac} adet maç** başarıyla ve anında derlendi!")
+            st.success(f"🎉 Polonya Ekstraklasa için toplam **{toplam_mac} adet maç** başarıyla ve anında derlendi!")
         with col2:
             st.download_button(
                 label="📥 Excel (CSV) İndir",
@@ -144,7 +144,7 @@ if 'norvec_hizli_arsiv' in st.session_state and st.session_state['norvec_hizli_a
         st.markdown(f"""
         <div class="summary-card">
             <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 6px;">
-                📊 Norveç Eliteserien — {st.session_state['aktif_secim_adi']} Genel İstatistikler
+                📊 Polonya Ekstraklasa — {st.session_state['aktif_secim_adi']} Genel İstatistikler
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; margin-top: 10px;">
                 <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">Toplam Maç: {toplam_mac}</span>
@@ -162,4 +162,4 @@ if 'norvec_hizli_arsiv' in st.session_state and st.session_state['norvec_hizli_a
     else:
         st.warning("⚠️ Seçilen kriterde maç bulunamadı.")
 else:
-    st.info("👈 Sol menüden **'TÜM SEZONLAR (2021 - 2026)'** veya istediğin yılı seçip **'Eliteserien Hızlı Arşivi Derle'** butonuna basarak anında indirebilirsin.")
+    st.info("👈 Sol menüden **'TÜM SEZONLAR (2021 - 2026)'** veya istediğin yılı seçip **'Ekstraklasa Hızlı Arşivi Derle'** butonuna basarak anında indirebilirsin.")
