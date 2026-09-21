@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 
 # Sayfa Ayarları
-st.set_page_config(page_title="Oran Aralığı Analiz Merkezi", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Gelişmiş Çoklu Oran Analiz Merkezi", page_icon="⚽", layout="wide")
 
 # API-Football Anahtarınız
 API_KEY = "6872ad88365b79a00040ce0ce9c7ab6a"
@@ -14,7 +14,7 @@ st.markdown("""
         background-color: #0e0f11;
         color: #ffffff;
     }
-    .stNumberInput input, .stSelectbox div {
+    .stTextInput input, .stSelectbox div {
         background-color: #1a1b1e !important;
         color: #ffffff !important;
         border: 1px solid #2d2f34 !important;
@@ -59,7 +59,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 Oran Aralığı Filtreleme & Analiz Sistemi")
+st.title("⚽ Gelişmiş Çoklu Oran ve Aralık Analiz Sistemi")
 
 # 25 Ülke / Lig Haritası
 LIGLER = {
@@ -140,17 +140,17 @@ def api_tekil_lig_ve_sezon_getir(api_key, lig_id, sezon):
                             values = b.get("values", [])
                             if name in ["Match Winner", "1X2 Market"]:
                                 for v in values:
-                                    if str(v["value"]).lower() in ["home", "1"]: m_odds["MS 1"] = float(v["odd"])
-                                    elif str(v["value"]).lower() in ["draw", "x"]: m_odds["MS X"] = float(v["odd"])
-                                    elif str(v["value"]).lower() in ["away", "2"]: m_odds["MS 2"] = float(v["odd"])
+                                    if str(v["value"]).lower() in ["home", "1"]: m_odds["ms1"] = float(v["odd"])
+                                    elif str(v["value"]).lower() in ["draw", "x"]: m_odds["ms0"] = float(v["odd"])
+                                    elif str(v["value"]).lower() in ["away", "2"]: m_odds["ms2"] = float(v["odd"])
                             elif name in ["Goals Over/Under", "Second Half Goals Over/Under"]:
                                 for v in values:
-                                    if v["value"] == "Over 2.5": m_odds["2.5 Üst"] = float(v["odd"])
-                                    elif v["value"] == "Under 2.5": m_odds["2.5 Alt"] = float(v["odd"])
+                                    if v["value"] == "Over 2.5": m_odds["ust_2_5"] = float(v["odd"])
+                                    elif v["value"] == "Under 2.5": m_odds["alt_2_5"] = float(v["odd"])
                             elif name in ["Both Teams Score", "Both Teams To Score"]:
                                 for v in values:
-                                    if str(v["value"]).lower() in ["yes", "kg var"]: m_odds["KG Var"] = float(v["odd"])
-                                    elif str(v["value"]).lower() in ["no", "kg yok"]: m_odds["KG Yok"] = float(v["odd"])
+                                    if str(v["value"]).lower() in ["yes", "kg var"]: m_odds["kg_var"] = float(v["odd"])
+                                    elif str(v["value"]).lower() in ["no", "kg yok"]: m_odds["kg_yok"] = float(v["odd"])
                         odds_map[f_id] = m_odds
             
             paging = data_odds.get("paging", {})
@@ -201,17 +201,58 @@ secilen_lig_key = st.sidebar.selectbox("Lig Seçin", list(LIGLER.keys()))
 secilen_sezon_key = st.sidebar.selectbox("Sezon / Yıl Seçin", list(SEZON_SECENEKLERI.keys()))
 
 st.sidebar.markdown("---")
-st.sidebar.header("🎯 Oran Aralığı Belirleyin")
+st.sidebar.header("🎯 Oran Filtreleri")
+st.sidebar.caption("Tek değer (örn: 1.57) veya aralık (örn: 1.40-2.40) girebilirsiniz.")
 
-col_min, col_max = st.sidebar.columns(2)
-min_oran = col_min.number_input("Min Oran", value=1.40, step=0.01, format="%.2f")
-max_oran = col_max.number_input("Max Oran", value=2.40, step=0.01, format="%.2f")
+col1, col2, col3 = st.sidebar.columns(3)
+ms1_str = col1.text_input("MS 1", value="", placeholder="Örn: 1.57")
+ms0_str = col2.text_input("MS X", value="", placeholder="1.40-2.40")
+ms2_str = col3.text_input("MS 2", value="", placeholder="")
+
+col4, col5 = st.sidebar.columns(2)
+ust_str = col4.text_input("2.5 ÜST", value="", placeholder="")
+alt_str = col5.text_input("2.5 ALT", value="", placeholder="")
+
+col6, col7 = st.sidebar.columns(2)
+kgv_str = col6.text_input("KG VAR", value="", placeholder="Örn: 1.57")
+kgy_str = col7.text_input("KG YOK", value="", placeholder="")
+
+tolerans = st.sidebar.slider("Tekil Oran Esnekliği (±)", min_value=0.00, max_value=0.05, value=0.01, step=0.01)
+
+# Girdileri Ayrıştırma Fonksiyonu
+def girdi_parse(val_str):
+    val_str = val_str.strip().replace(",", ".")
+    if not val_str or val_str == "0":
+        return None
+    if "-" in val_str:
+        try:
+            parts = val_str.split("-")
+            return ("range", float(parts[0]), float(parts[1]))
+        except:
+            return None
+    else:
+        try:
+            return ("single", float(val_str))
+        except:
+            return None
+
+kriterler = {
+    "ms1": girdi_parse(ms1_str),
+    "ms0": girdi_parse(ms0_str),
+    "ms2": girdi_parse(ms2_str),
+    "ust_2_5": girdi_parse(ust_str),
+    "alt_2_5": girdi_parse(alt_str),
+    "kg_var": girdi_parse(kgv_str),
+    "kg_yok": girdi_parse(kgy_str)
+}
+
+aktif_filtreler = {k: v for k, v in kriterler.items() if v is not None}
 
 target_ligler = [v for k, v in LIGLER.items() if v != "ALL"] if LIGLER[secilen_lig_key] == "ALL" else [LIGLER[secilen_lig_key]]
 target_sezonlar = [2026, 2025, 2024, 2023, 2022, 2021] if SEZON_SECENEKLERI[secilen_sezon_key] == "ALL" else [SEZON_SECENEKLERI[secilen_sezon_key]]
 
-if min_oran >= max_oran:
-    st.error("⚠️ Minimum oran, maksimum orandan küçük olmalıdır.")
+if not aktif_filtreler:
+    st.info("👈 Analiz yapmak için sol menüdeki alanlardan en az birine oran veya aralık girin (Örn: KG VAR = 1.57 veya MS X = 1.40-2.40).")
 else:
     yuklenen_maclar = []
     toplam_hedef = len(target_ligler) * len(target_sezonlar)
@@ -231,39 +272,59 @@ else:
     progress_bar.empty()
     status_text.empty()
 
-    # Oran Aralığı Algoritması
+    def oran_sarta_uygun_mu(mac_orani, k_rule, tol):
+        if mac_orani is None or k_rule is None:
+            return False
+        r_type = k_rule[0]
+        if r_type == "single":
+            target = k_rule[1]
+            return abs(mac_orani - target) <= tol
+        elif r_type == "range":
+            low, high = k_rule[1], k_rule[2]
+            return low <= mac_orani <= high
+        return False
+
     esleseler = []
     for mac in yuklenen_maclar:
         o = mac.get("oranlar", {})
-        yakalanan_kategoriler = []
-        
-        for k_adi, val in o.items():
-            if val is not None and min_oran <= val <= max_oran:
-                yakalanan_kategoriler.append((k_adi, val))
-        
-        if yakalanan_kategoriler:
-            mac["yakalananlar"] = yakalanan_kategoriler
+        uygun = True
+        tutan_kategoriler = []
+        for k_key, k_rule in aktif_filtreler.items():
+            if oran_sarta_uygun_mu(o.get(k_key), k_rule, tolerans):
+                tutan_kategoriler.append(k_key)
+            else:
+                uygun = False
+                break
+        if uygun:
+            mac["tutanlar"] = tutan_kategoriler
             esleseler.append(mac)
 
     if not esleseler:
-        st.warning(f"⚠️ Herhangi bir bahis seçeneğinde **{min_oran:.2f} - {max_oran:.2f}** aralığında orana sahip maç bulunamadı.")
+        st.warning("⚠️ Girilen oran şartlarına uyan maç bulunamadı.")
     else:
         toplam = len(esleseler)
-        
-        # Hangi kategoride kaç defa geçtiğini hesapla
-        kategori_sayaclari = {}
-        for m in esleseler:
-            for k_adi, _ in m["yakalananlar"]:
-                kategori_sayaclari[k_adi] = kategori_sayaclari.get(k_adi, 0) + 1
+        ms1_cnt = sum(1 for m in esleseler if m['ms_sonuc'] == '1')
+        ms0_cnt = sum(1 for m in esleseler if m['ms_sonuc'] == 'X')
+        ms2_cnt = sum(1 for m in esleseler if m['ms_sonuc'] == '2')
+        ust_cnt = sum(1 for m in esleseler if m['toplam_gol'] > 2.5)
+        kg_cnt = sum(1 for m in esleseler if m['kg_var'])
 
-        ozet_str = " • ".join([f"<b>{k}:</b> {v} Maç" for k, v in kategori_sayaclari.items()])
+        en_cok_ms = "MS 1" if ms1_cnt >= max(ms0_cnt, ms2_cnt) else ("MS X" if ms0_cnt >= ms2_cnt else "MS 2")
+        en_cok_yuzde = round((max(ms1_cnt, ms0_cnt, ms2_cnt) / toplam) * 100)
 
         # Özet Kartı
         st.markdown(f"""
         <div class="summary-card">
-            <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 8px;">📊 [{min_oran:.2f} - {max_oran:.2f}] ARALIĞINDA ORANI OLAN MAÇLAR ({toplam} Maç)</div>
-            <div style="font-size: 14px; color: #ffffff; margin-bottom: 10px;">
-                <b>Aradaki Oranların Dağılımı:</b> {ozet_str}
+            <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 8px;">📊 ŞARTLARA UYAN ANALİZ SONUCU ({toplam} Maç Bulundu)</div>
+            <div style="font-size: 20px; font-weight: bold; margin-bottom: 12px; color: white;">
+                🏆 En Çok Biten Sonuc: <span style="background-color: #2e7d32; color: white; padding: 4px 12px; border-radius: 6px;">{en_cok_ms} (%{en_cok_yuzde})</span>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px;">
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS 1: %{round(ms1_cnt/toplam*100)} ({ms1_cnt})</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS X: %{round(ms0_cnt/toplam*100)} ({ms0_cnt})</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS 2: %{round(ms2_cnt/toplam*100)} ({ms2_cnt})</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">2.5 Üst: %{round(ust_cnt/toplam*100)}</span>
+                <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">KG Var: %{round(kg_cnt/toplam*100)}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -271,10 +332,10 @@ else:
         # Maç Kartları
         for m in esleseler:
             o = m.get("oranlar", {})
-            yakalanan_turler = [k for k, _ in m["yakalananlar"]]
+            tutanlar = m.get("tutanlar", [])
 
-            def get_box_style(tur_adi, val):
-                is_hit = tur_adi in yakalanan_turler
+            def get_box_style(k_key, val):
+                is_hit = k_key in tutanlar
                 bg_color = "#fbc02d" if is_hit else "#2d2f34"
                 text_color = "#000000" if is_hit else "#ffffff"
                 return f"background-color:{bg_color}; color:{text_color}; font-weight:bold; padding:6px 0;"
@@ -292,13 +353,13 @@ else:
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <div class="odd-box"><div class="odd-header">MS 1</div><div style="{get_box_style('MS 1', o.get('MS 1'))}">{o.get('MS 1') or '-'}</div></div>
-                    <div class="odd-box"><div class="odd-header">MS X</div><div style="{get_box_style('MS X', o.get('MS X'))}">{o.get('MS X') or '-'}</div></div>
-                    <div class="odd-box"><div class="odd-header">MS 2</div><div style="{get_box_style('MS 2', o.get('MS 2'))}">{o.get('MS 2') or '-'}</div></div>
-                    <div class="odd-box"><div class="odd-header-blue2">2.5 ÜST</div><div style="{get_box_style('2.5 Üst', o.get('2.5 Üst'))}">{o.get('2.5 Üst') or '-'}</div></div>
-                    <div class="odd-box"><div class="odd-header-blue2">2.5 ALT</div><div style="{get_box_style('2.5 Alt', o.get('2.5 Alt'))}">{o.get('2.5 Alt') or '-'}</div></div>
-                    <div class="odd-box"><div class="odd-header-blue2">KG VAR</div><div style="{get_box_style('KG Var', o.get('KG Var'))}">{o.get('KG Var') or '-'}</div></div>
-                    <div class="odd-box"><div class="odd-header-blue2">KG YOK</div><div style="{get_box_style('KG Yok', o.get('KG Yok'))}">{o.get('KG Yok') or '-'}</div></div>
+                    <div class="odd-box"><div class="odd-header">MS 1</div><div style="{get_box_style('ms1', o.get('ms1'))}">{o.get('ms1') or '-'}</div></div>
+                    <div class="odd-box"><div class="odd-header">MS X</div><div style="{get_box_style('ms0', o.get('ms0'))}">{o.get('ms0') or '-'}</div></div>
+                    <div class="odd-box"><div class="odd-header">MS 2</div><div style="{get_box_style('ms2', o.get('ms2'))}">{o.get('ms2') or '-'}</div></div>
+                    <div class="odd-box"><div class="odd-header-blue2">2.5 ÜST</div><div style="{get_box_style('ust_2_5', o.get('ust_2_5'))}">{o.get('ust_2_5') or '-'}</div></div>
+                    <div class="odd-box"><div class="odd-header-blue2">2.5 ALT</div><div style="{get_box_style('alt_2_5', o.get('alt_2_5'))}">{o.get('alt_2_5') or '-'}</div></div>
+                    <div class="odd-box"><div class="odd-header-blue2">KG VAR</div><div style="{get_box_style('kg_var', o.get('kg_var'))}">{o.get('kg_var') or '-'}</div></div>
+                    <div class="odd-box"><div class="odd-header-blue2">KG YOK</div><div style="{get_box_style('kg_yok', o.get('kg_yok'))}">{o.get('kg_yok') or '-'}</div></div>
                 </div>
             </div>
             """
