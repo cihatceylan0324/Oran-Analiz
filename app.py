@@ -59,7 +59,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚽ Gelişmiş Çoklu Oran ve Aralık Analiz Sistemi")
+st.title("⚽ Gelişmiş Çoklu Oran ve Geçmiş Sezon Analiz Merkezi")
 
 # 25 Ülke / Lig Haritası
 LIGLER = {
@@ -102,7 +102,7 @@ SEZON_SECENEKLERI = {
 }
 
 # Veri Çekme Fonksiyonu
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=86400) # 24 Saat Önbelekleme
 def api_tekil_lig_ve_sezon_getir(api_key, lig_id, sezon):
     headers = {
         'x-apisports-key': api_key,
@@ -122,6 +122,7 @@ def api_tekil_lig_ve_sezon_getir(api_key, lig_id, sezon):
         page = 1
         total_pages = 1
         
+        # Tüm oran sayfalarını eksiksiz tarama
         while page <= total_pages:
             url_odds = f"https://v3.football.api-sports.io/odds?league={lig_id}&season={sezon}&page={page}"
             res_odds = requests.get(url_odds, headers=headers)
@@ -132,32 +133,32 @@ def api_tekil_lig_ve_sezon_getir(api_key, lig_id, sezon):
                     f_id = o_item["fixture"]["id"]
                     bookmakers = o_item.get("bookmakers", [])
                     if bookmakers:
-                        bm = bookmakers[0]
-                        bets = bm.get("bets", [])
                         m_odds = {}
-                        for b in bets:
-                            name = b.get("name")
-                            values = b.get("values", [])
-                            if name in ["Match Winner", "1X2 Market"]:
-                                for v in values:
-                                    if str(v["value"]).lower() in ["home", "1"]: m_odds["ms1"] = float(v["odd"])
-                                    elif str(v["value"]).lower() in ["draw", "x"]: m_odds["ms0"] = float(v["odd"])
-                                    elif str(v["value"]).lower() in ["away", "2"]: m_odds["ms2"] = float(v["odd"])
-                            elif name in ["Goals Over/Under", "Second Half Goals Over/Under"]:
-                                for v in values:
-                                    if v["value"] == "Over 2.5": m_odds["ust_2_5"] = float(v["odd"])
-                                    elif v["value"] == "Under 2.5": m_odds["alt_2_5"] = float(v["odd"])
-                            elif name in ["Both Teams Score", "Both Teams To Score"]:
-                                for v in values:
-                                    if str(v["value"]).lower() in ["yes", "kg var"]: m_odds["kg_var"] = float(v["odd"])
-                                    elif str(v["value"]).lower() in ["no", "kg yok"]: m_odds["kg_yok"] = float(v["odd"])
-                        odds_map[f_id] = m_odds
+                        # En güncel/geçerli oran verisi sunan ilk uygun büroyu seçer
+                        for bm in bookmakers:
+                            bets = bm.get("bets", [])
+                            for b in bets:
+                                name = b.get("name")
+                                values = b.get("values", [])
+                                if name in ["Match Winner", "1X2 Market"]:
+                                    for v in values:
+                                        if str(v["value"]).lower() in ["home", "1"] and "ms1" not in m_odds: m_odds["ms1"] = float(v["odd"])
+                                        elif str(v["value"]).lower() in ["draw", "x"] and "ms0" not in m_odds: m_odds["ms0"] = float(v["odd"])
+                                        elif str(v["value"]).lower() in ["away", "2"] and "ms2" not in m_odds: m_odds["ms2"] = float(v["odd"])
+                                elif name in ["Goals Over/Under", "Second Half Goals Over/Under"]:
+                                    for v in values:
+                                        if v["value"] == "Over 2.5" and "ust_2_5" not in m_odds: m_odds["ust_2_5"] = float(v["odd"])
+                                        elif v["value"] == "Under 2.5" and "alt_2_5" not in m_odds: m_odds["alt_2_5"] = float(v["odd"])
+                                elif name in ["Both Teams Score", "Both Teams To Score"]:
+                                    for v in values:
+                                        if str(v["value"]).lower() in ["yes", "kg var"] and "kg_var" not in m_odds: m_odds["kg_var"] = float(v["odd"])
+                                        elif str(v["value"]).lower() in ["no", "kg yok"] and "kg_yok" not in m_odds: m_odds["kg_yok"] = float(v["odd"])
+                        if m_odds:
+                            odds_map[f_id] = m_odds
             
             paging = data_odds.get("paging", {})
             total_pages = paging.get("total", 1)
             page += 1
-            if page > 15:
-                break
 
         maclar = []
         for item in fixtures_raw:
@@ -178,19 +179,22 @@ def api_tekil_lig_ve_sezon_getir(api_key, lig_id, sezon):
                 f_id = f["id"]
                 oranlar = odds_map.get(f_id, {})
 
-                maclar.append({
-                    "id": f_id,
-                    "tarih": f["date"][:10],
-                    "lig_adi": l["name"],
-                    "ev_sahibi": t["home"]["name"],
-                    "deplasman": t["away"]["name"],
-                    "ms_skor": f"{ev_gol} - {dep_gol}",
-                    "iy_skor": f"{score['halftime']['home'] or 0}-{score['halftime']['away'] or 0}",
-                    "ms_sonuc": ms_sonuc,
-                    "toplam_gol": toplam_gol,
-                    "kg_var": kg_var,
-                    "oranlar": oranlar
-                })
+                # Oranı olan veya bitmiş maçları ekle
+                if oranlar:
+                    maclar.append({
+                        "id": f_id,
+                        "tarih": f["date"][:10],
+                        "sezon": l.get("season", sezon),
+                        "lig_adi": l["name"],
+                        "ev_sahibi": t["home"]["name"],
+                        "deplasman": t["away"]["name"],
+                        "ms_skor": f"{ev_gol} - {dep_gol}",
+                        "iy_skor": f"{score['halftime']['home'] or 0}-{score['halftime']['away'] or 0}",
+                        "ms_sonuc": ms_sonuc,
+                        "toplam_gol": toplam_gol,
+                        "kg_var": kg_var,
+                        "oranlar": oranlar
+                    })
         return maclar
     except Exception:
         return []
@@ -217,7 +221,7 @@ col6, col7 = st.sidebar.columns(2)
 kgv_str = col6.text_input("KG VAR", value="", placeholder="Örn: 1.57")
 kgy_str = col7.text_input("KG YOK", value="", placeholder="")
 
-tolerans = st.sidebar.slider("Tekil Oran Esnekliği (±)", min_value=0.00, max_value=0.05, value=0.01, step=0.01)
+tolerans = st.sidebar.slider("Tekil Oran Esnekliği (±)", min_value=0.00, max_value=0.08, value=0.02, step=0.01)
 
 # Girdileri Ayrıştırma Fonksiyonu
 def girdi_parse(val_str):
@@ -263,7 +267,7 @@ else:
     tamamlanan = 0
     for l_id in target_ligler:
         for s_val in target_sezonlar:
-            status_text.text(f"⏳ Veriler taranıyor ({tamamlanan + 1}/{toplam_hedef})...")
+            status_text.text(f"⏳ Geçmiş sezonlar taranıyor ({s_val} Sezonu, Lig ID: {l_id})...")
             m_list = api_tekil_lig_ve_sezon_getir(API_KEY, l_id, s_val)
             yuklenen_maclar.extend(m_list)
             tamamlanan += 1
@@ -300,7 +304,7 @@ else:
             esleseler.append(mac)
 
     if not esleseler:
-        st.warning("⚠️ Girilen oran şartlarına uyan maç bulunamadı.")
+        st.warning(f"⚠️ Toplam {len(yuklenen_maclar)} maç tarandı ancak belirtilen oran şartına uyan maç bulunamadı. Lütfen oran aralığını veya esnekliği (±) biraz artırın.")
     else:
         toplam = len(esleseler)
         ms1_cnt = sum(1 for m in esleseler if m['ms_sonuc'] == '1')
@@ -315,9 +319,9 @@ else:
         # Özet Kartı
         st.markdown(f"""
         <div class="summary-card">
-            <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 8px;">📊 ŞARTLARA UYAN ANALİZ SONUCU ({toplam} Maç Bulundu)</div>
+            <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 8px;">📊 ŞARTLARA UYAN ANALİZ SONUCU ({toplam} Geçmiş Maç Bulundu)</div>
             <div style="font-size: 20px; font-weight: bold; margin-bottom: 12px; color: white;">
-                🏆 En Çok Biten Sonuc: <span style="background-color: #2e7d32; color: white; padding: 4px 12px; border-radius: 6px;">{en_cok_ms} (%{en_cok_yuzde})</span>
+                🏆 En Çok Biten Sonuç: <span style="background-color: #2e7d32; color: white; padding: 4px 12px; border-radius: 6px;">{en_cok_ms} (%{en_cok_yuzde})</span>
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px;">
                 <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">MS 1: %{round(ms1_cnt/toplam*100)} ({ms1_cnt})</span>
@@ -344,7 +348,7 @@ else:
             <div class="match-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2a2c30; padding-bottom: 10px; margin-bottom: 12px;">
                     <div>
-                        <span style="font-size: 11px; color: #888; display: block;">{m['tarih']} • {m.get('lig_adi', 'Lig')}</span>
+                        <span style="font-size: 11px; color: #888; display: block;">{m['tarih']} ({m['sezon']} Sezonu) • {m.get('lig_adi', 'Lig')}</span>
                         <span style="font-size: 16px; font-weight: bold; color: #fff;">{m['ev_sahibi']} - {m['deplasman']}</span>
                     </div>
                     <div style="text-align: right;">
