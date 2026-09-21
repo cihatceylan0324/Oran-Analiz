@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 
 # Sayfa Ayarları
-st.set_page_config(page_title="Premiership Hızlı Arşiv", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Avusturya Bundesliga Hızlı Arşiv", page_icon="⚽", layout="wide")
 
 # API-Football Anahtarınız
 API_KEY = "6872ad88365b79a00040ce0ce9c7ab6a"
@@ -32,8 +32,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚽ İskoçya Premiership 5 Yıllık Hızlı Maç Arşivi (2021 - 2026)")
-st.caption("Bekleme yapmadan, tüm Premiership maçlarını ve istatistiklerini anında Excel'e (CSV) aktar.")
+st.title("⚽ Avusturya Bundesliga 5 Yıllık Hızlı Maç Arşivi (2021 - 2026)")
+st.caption("Bekleme yapmadan, tüm Avusturya Bundesliga maçlarını ve istatistiklerini anında Excel'e (CSV) aktar.")
 
 SEZON_SECENEKLERI = {
     "🗓️ TÜM SEZONLAR (2021 - 2026)": "ALL",
@@ -45,14 +45,14 @@ SEZON_SECENEKLERI = {
     "2021": 2021
 }
 
-# Hızlı Veri Çekme Fonksiyonu (Premiership ID: 179)
+# Hızlı Veri Çekme Fonksiyonu (Avusturya Bundesliga ID: 218)
 @st.cache_data(ttl=86400)
-def api_iskocya_hizli_getir(api_key, sezon):
+def api_avusturya_hizli_getir(api_key, sezon):
     headers = {
         'x-apisports-key': api_key,
         'x-rapidapi-key': api_key
     }
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?league=179&season={sezon}"
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?league=218&season={sezon}"
     try:
         res_fix = requests.get(url_fixtures, headers=headers)
         data_fix = res_fix.json()
@@ -98,21 +98,21 @@ secilen_sezon_key = st.sidebar.selectbox("Sezon / Yıl Aralığı Seçin", list(
 secim_degeri = SEZON_SECENEKLERI[secilen_sezon_key]
 
 st.sidebar.markdown("---")
-if st.sidebar.button("⚡ Premiership Hızlı Arşivi Derle", type="primary"):
+if st.sidebar.button("⚡ Bundesliga Hızlı Arşivi Derle", type="primary"):
     hedef_sezonlar = [2026, 2025, 2024, 2023, 2022, 2021] if secim_degeri == "ALL" else [secim_degeri]
     
     tum_toplanan_maclar = []
-    with st.spinner("Premiership maçları hızla yükleniyor..."):
+    with st.spinner("Avusturya Bundesliga maçları hızla yükleniyor..."):
         for s in hedef_sezonlar:
-            m_list = api_iskocya_hizli_getir(API_KEY, s)
+            m_list = api_avusturya_hizli_getir(API_KEY, s)
             tum_toplanan_maclar.extend(m_list)
             
-    st.session_state['iskocya_hizli_arsiv'] = tum_toplanan_maclar
+    st.session_state['avusturya_hizli_arsiv'] = tum_toplanan_maclar
     st.session_state['aktif_secim_adi'] = secilen_sezon_key
 
 # Hafızada maç varsa göster ve Excel İndir butonu sun
-if 'iskocya_hizli_arsiv' in st.session_state and st.session_state['iskocya_hizli_arsiv']:
-    arsiv = st.session_state['iskocya_hizli_arsiv']
+if 'avusturya_hizli_arsiv' in st.session_state and st.session_state['avusturya_hizli_arsiv']:
+    arsiv = st.session_state['avusturya_hizli_arsiv']
     toplam_mac = len(arsiv)
     
     if toplam_mac > 0:
@@ -120,11 +120,11 @@ if 'iskocya_hizli_arsiv' in st.session_state and st.session_state['iskocya_hizli
         
         # CSV Verisi Hazırlığı
         csv_verisi = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        dosya_adi = f"Premiership_HizliArsiv_{st.session_state['aktif_secim_adi'].replace(' ', '_')}.csv"
+        dosya_adi = f"AustriaBundesliga_HizliArsiv_{st.session_state['aktif_secim_adi'].replace(' ', '_')}.csv"
 
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.success(f"🎉 İskoçya Premiership için toplam **{toplam_mac} adet maç** başarıyla ve anında derlendi!")
+            st.success(f"🎉 Avusturya Bundesliga için toplam **{toplam_mac} adet maç** başarıyla ve anında derlendi!")
         with col2:
             st.download_button(
                 label="📥 Excel (CSV) İndir",
@@ -144,7 +144,7 @@ if 'iskocya_hizli_arsiv' in st.session_state and st.session_state['iskocya_hizli
         st.markdown(f"""
         <div class="summary-card">
             <div style="font-size: 16px; font-weight: bold; color: #81c784; margin-bottom: 6px;">
-                📊 Premiership — {st.session_state['aktif_secim_adi']} Genel İstatistikler
+                📊 Avusturya Bundesliga — {st.session_state['aktif_secim_adi']} Genel İstatistikler
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; margin-top: 10px;">
                 <span style="background:#1e2720; color:#a5d6a7; padding:5px 10px; border-radius:6px; border:1px solid #2e7d32;">Toplam Maç: {toplam_mac}</span>
@@ -162,4 +162,4 @@ if 'iskocya_hizli_arsiv' in st.session_state and st.session_state['iskocya_hizli
     else:
         st.warning("⚠️ Seçilen kriterde maç bulunamadı.")
 else:
-    st.info("👈 Sol menüden **'TÜM SEZONLAR (2021 - 2026)'** veya istediğin yılı seçip **'Premiership Hızlı Arşivi Derle'** butonuna basarak anında indirebilirsin.")
+    st.info("👈 Sol menüden **'TÜM SEZONLAR (2021 - 2026)'** veya istediğin yılı seçip **'Bundesliga Hızlı Arşivi Derle'** butonuna basarak anında indirebilirsin.")
