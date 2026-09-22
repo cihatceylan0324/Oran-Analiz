@@ -1,81 +1,73 @@
-import streamlit as st
+import time
+import random
+import requests
 import pandas as pd
-import glob
-import numpy as np
 
-# Sayfa Ayarları
-st.set_page_config(page_title="Süper Lig Oran ve İY/MS Analiz Paneli", page_icon="⚽", layout="wide")
+# API-Football Pro Anahtarın
+API_KEY = "6872ad88365b79a00040ce0ce9c7ab6a"
+BASE_URL = "https://v3.football.api-sports.io/fixtures"
 
-st.title("⚽ Türkiye Süper Lig - Oran ve İY/MS Analiz Paneli")
-st.markdown("---")
+headers = {
+    'x-apisports-key': API_KEY
+}
 
-# Depodaki CSV dosyalarını kontrol et
-dosyalar = glob.glob("*.csv")
+# Türkiye Süper Lig ID'si: 203
+LEAGUE_ID = 203
+sezonlar = [2021, 2022, 2023, 2024, 2025, 2026]
+dosya_adi = "oran_analiz.csv"
 
-@st.cache_data
-def yedek_veri_uret():
-    # CSV yoksa sistem çökmesin diye anlık zengin örnek veri üretir
-    np.random.seed(42)
-    takimlar = ["Galatasaray", "Fenerbahçe", "Beşiktaş", "Trabzonspor", "Başakşehir", "Adana Demirspor", "Alanyaspor", "Antalyaspor", "Konyaspor", "Kayserispor", "Sivasspor", "Kasımpaşa"]
-    sezonlar = ["2021-2022", "2022-2023", "2023-2024", "2024-2025", "2025-2026"]
+print("⚽ API-Football Pro Veri Toplama Botu Başlatıldı...")
+tum_maclar = []
+
+for sezon in sezonlar:
+    print(f"📥 {sezon} sezonu maçları çekiliyor...")
     
-    veri = []
-    for _ in range(500):
-        ev = np.random.choice(takimlar)
-        dep = np.random.choice(takimlar)
-        while ev == dep: dep = np.random.choice(takimlar)
+    params = {
+        "league": LEAGUE_ID,
+        "season": sezon
+    }
+    
+    try:
+        response = requests.get(BASE_URL, headers=headers, params=params)
         
-        iy_h, iy_a = np.random.randint(0, 3), np.random.randint(0, 3)
-        ms_h, ms_a = iy_h + np.random.randint(0, 3), iy_a + np.random.randint(0, 3)
-        
-        iy_s = '1' if iy_h > iy_a else ('2' if iy_h < iy_a else '0')
-        ms_s = '1' if ms_h > ms_a else ('2' if ms_h < ms_a else '0')
-        
-        veri.append({
-            'Sezon': np.random.choice(sezonlar),
-            'Ev Sahibi': ev,
-            'Deplasman': dep,
-            'İY/MS': f"{iy_s}/{ms_s}",
-            'MS_1': round(np.random.uniform(1.40, 4.00), 2),
-            'MS_0': round(np.random.uniform(3.10, 3.70), 2),
-            'MS_2': round(np.random.uniform(1.70, 4.50), 2),
-            '2.5 Üst': (ms_h + ms_a) > 2.5
-        })
-    return pd.DataFrame(veri)
+        if response.status_code == 200:
+            veri = response.json()
+            fixtures = veri.get("response", [])
+            
+            if fixtures:
+                for match in fixtures:
+                    mac_detay = {
+                        'Sezon': f"{sezon}-{sezon+1}",
+                        'Tarih': match.get('fixture', {}).get('date'),
+                        'Ev Sahibi': match.get('teams', {}).get('home', {}).get('name'),
+                        'Deplasman': match.get('teams', {}).get('away', {}).get('name'),
+                        'IY_Ev': match.get('score', {}).get('halftime', {}).get('home'),
+                        'IY_Dep': match.get('score', {}).get('halftime', {}).get('away'),
+                        'MS_Ev': match.get('score', {}).get('fulltime', {}).get('home'),
+                        'MS_Dep': match.get('score', {}).get('fulltime', {}).get('away'),
+                    }
+                    tum_maclar.append(mac_detay)
+                print(f"✅ {sezon} sezonundan {len(fixtures)} maç başarıyla alındı.")
+            else:
+                print(f"⚠️ {sezon} sezonunda veri bulunamadı.")
+        else:
+            print(f"❌ API Hatası: {response.status_code} - {response.text}")
+            
+    except Exception as e:
+        print(f"⚠️ Bağlantı hatası: {e}")
+    
+    time.sleep(2)
 
-# Veri Yükleme Stratejisi
-if dosyalar:
-    secilen_dosya = st.sidebar.selectbox("📂 CSV Dosyası Seç", dosyalar)
-    df = pd.read_csv(secilen_dosya)
-    st.sidebar.success(f"Yüklenen: {secilen_dosya}")
+# Verileri CSV'ye dökme
+if tum_maclar:
+    final_df = pd.DataFrame(tum_maclar)
+    
+    final_df['İY/MS'] = final_df.apply(lambda r: f"{'1' if r['IY_Ev'] > r['IY_Dep'] else ('2' if r['IY_Ev'] < r['IY_Dep'] else '0')}/"
+                                                f"{'1' if r['MS_Ev'] > r['MS_Dep'] else ('2' if r['MS_Ev'] < r['MS_Dep'] else '0')}" 
+                                                if pd.notnull(r['IY_Ev']) and pd.notnull(r['MS_Ev']) else "-", axis=1)
+    
+    final_df.to_csv(dosya_adi, index=False, encoding='utf-8')
+    print(f"\n🎉 İşlem tamam! Toplam {len(final_df)} maç '{dosya_adi}' dosyasına kaydedildi.")
+    print("Artık bu dosyayı GitHub depona yükleyebilirsin.")
 else:
-    st.sidebar.info("💡 Depoda CSV bulunamadı, sistem aktif çalışma modunda.")
-    df = yedek_veri_uret()
-
-# Sol Menü Filtreleri
-st.sidebar.header("⚙️ Filtreler ve Arama")
-
-# Takım Arama
-aranan = st.sidebar.text_input("🔍 Takım Ara:")
-if aranan:
-    df = df[df.astype(str).apply(lambda x: x.str.contains(aranan, case=False)).any(axis=1)]
-
-# Metrikler ve İstatistikler
-st.subheader("📈 Oran ve İstatistik Özeti")
-c1, c2, c3 = st.columns(3)
-c1.metric("Toplam Maç", f"{len(df):,}")
-if 'MS_1' in df.columns and len(df) > 0:
-    c2.metric("Ortalama MS 1 Oranı", f"{df['MS_1'].mean():.2f}")
-if '2.5 Üst' in df.columns and len(df) > 0:
-    ust_yuzde = (df['2.5 Üst'].sum() / len(df)) * 100
-    c3.metric("2.5 Üst Oranı", f"%{ust_yuzde:.1f}")
-
-st.markdown("---")
-
-# Ana Tablo
-st.subheader("📊 Maç Listesi ve Oranlar")
-st.dataframe(df.head(1000), use_container_width=True)
-
-# İndir
-csv_veri = df.to_csv(index=False).encode('utf-8')
-st.download_button("📥 Verileri İndir (CSV)", csv_veri, "oran_analiz_cikti.csv", "text/csv")
+    print("❌ Hiç veri çekilemedi.")
