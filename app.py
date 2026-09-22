@@ -14,10 +14,9 @@ def genis_veri_getir():
     np.random.seed(42)
     takimlar = ["Galatasaray", "Fenerbahçe", "Beşiktaş", "Trabzonspor", "Başakşehir", "Adana Demirspor", "Alanyaspor", "Antalyaspor", "Konyaspor", "Kayserispor", "Sivasspor", "Kasımpaşa", "Hatayspor", "Gaziantep FK", "Samsunspor", "Rizespor"]
     sezonlar = ["2021-2022", "2022-2023", "2023-2024", "2024-2025", "2025-2026"]
-    iyms_secenekleri = ["1/1", "1/0", "1/2", "0/1", "0/0", "0/2", "2/1", "2/0", "2/2"]
     
     veri_listesi = []
-    for i in range(1, 151): # 150 Maçlık zengin arşiv
+    for i in range(1, 201): # 200 Maçlık geniş arşiv
         ev = np.random.choice(takimlar)
         dep = np.random.choice(takimlar)
         while ev == dep:
@@ -52,7 +51,7 @@ def genis_veri_getir():
             'MS_2': round(np.random.uniform(1.60, 5.00), 2),
             'Alt_2.5': round(np.random.uniform(1.65, 2.25), 2),
             'Ust_2.5': round(np.random.uniform(1.50, 2.10), 2)
-        }
+        })
     
     return pd.DataFrame(veri_listesi)
 
