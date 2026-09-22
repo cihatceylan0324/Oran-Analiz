@@ -3,9 +3,9 @@ import pandas as pd
 import glob
 
 # Sayfa Ayarları
-st.set_page_config(page_title="Süper Lig 40K Oran ve İY/MS Analiz Paneli", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Süper Lig 40K Oran ve Yüzde Analiz Paneli", page_icon="⚽", layout="wide")
 
-st.title("⚽ Türkiye Süper Lig - 40.000 Maçlık Gerçek Oran ve İY/MS Analiz Paneli")
+st.title("⚽ Türkiye Süper Lig - Detaylı Oran, İY/MS ve Yüzde Analiz Paneli")
 st.markdown("---")
 
 # Depodaki CSV dosyalarını bul
@@ -22,10 +22,10 @@ else:
     def veri_yukle(dosya_adi):
         return pd.read_csv(dosya_adi)
     
-    with st.spinner("40.000 maçlık dev veri seti yükleniyor, lütfen bekleyin..."):
+    with st.spinner("Veri seti yükleniyor..."):
         df = veri_yukle(secilen_dosya)
     
-    st.success(f"📂 Yüklenen Dosya: {secilen_dosya} | Toplam Maç Sayısı: {len(df):,}")
+    st.success(f"📂 Yüklenen Dosya: {secilen_dosya} | Toplam Maç: {len(df):,}")
     
     # Takım Arama
     aranan = st.sidebar.text_input("🔍 Takım Ara (Ev Sahibi veya Deplasman):")
@@ -37,42 +37,56 @@ else:
             df = df[df[ev_col].str.contains(aranan, case=False, na=False) | 
                     df[dep_col].str.contains(aranan, case=False, na=False)]
         else:
-            # Eğer sütun adı tam eşleşmezse genel arama yap
             df = df[df.astype(str).apply(lambda x: x.str.contains(aranan, case=False)).any(axis=1)]
 
-    # İY/MS Sütunu yoksa ama skorlar varsa otomatik türetelim
-    iyms_col = next((col for col in ['IY/MS', 'iyms', 'HTFT', 'ht_ft'] if col in df.columns), None)
-    if not iyms_col:
-        hthg = next((col for col in ['HTHG', 'IlkYariEv', 'ht_home'] if col in df.columns), None)
-        htag = next((col for col in ['HTAG', 'IlkYariDep', 'ht_away'] if col in df.columns), None)
-        fthg = next((col for col in ['FTHG', 'MacSonuEv', 'ft_home'] if col in df.columns), None)
-        ftag = next((col for col in ['FTAG', 'MacSonuDep', 'ft_away'] if col in df.columns), None)
+    # Gol sütunlarını tespit et ve 2.5 Alt/Üst ile İY/MS hesapla
+    fthg = next((col for col in ['FTHG', 'MacSonuEv', 'ft_home', 'HG'] if col in df.columns), None)
+    ftag = next((col for col in ['FTAG', 'MacSonuDep', 'ft_away', 'AG'] if col in df.columns), None)
+    
+    if fthg and ftag:
+        # Toplam golleri bul
+        df['ToplamGol'] = pd.to_numeric(df[fthg], errors='coerce') + pd.to_numeric(df[ftag], errors='coerce')
+        df['2.5 Üst'] = df['ToplamGol'] > 2.5
+        df['2.5 Alt'] = df['ToplamGol'] <= 2.5
         
-        if hthg and htag and fthg and ftag:
-            def hesapla_iyms(row):
-                try:
-                    iy = '1' if row[hthg] > row[htag] else ('2' if row[hthg] < row[htag] else '0')
-                    ms = '1' if row[fthg] > row[ftag] else ('2' if row[fthg] < row[ftag] else '0')
-                    return f"{iy}/{ms}"
-                except:
-                    return "-"
-            df['IY/MS'] = df.apply(hesapla_iyms, axis=1)
+        # Maç Sonu Sonucu (1, 0, 2)
+        def ms_sonuc(row):
+            if row[fthg] > row[ftag]: return '1'
+            elif row[fthg] < row[ftag]: return '2'
+            else: return '0'
+        df['MS_Sonuc'] = df.apply(ms_sonuc, axis=1)
 
-    # İY/MS Filtresi
-    if 'IY/MS' in df.columns:
-        secilen_iyms = st.sidebar.selectbox("İY/MS Kombinasyonu Filtrele", ["Tümü"] + list(df['IY/MS'].unique()))
-        if secilen_iyms != "Tümü":
-            df = df[df['IY/MS'] == secilen_iyms]
+    # --- İSTATİSTİK VE YÜZDE BÖLÜMÜ ---
+    st.subheader("📈 Seçilen Maçların Yüzdesel Oran Analizi")
+    
+    toplam_mac = len(df)
+    if toplam_mac > 0:
+        c1, c2, c3, c4, c5 = st.columns(5)
+        
+        c1.metric("Toplam Maç", f"{toplam_mac:,}")
+        
+        if '2.5 Üst' in df.columns:
+            ust_oran = (df['2.5 Üst'].sum() / toplam_mac) * 100
+            alt_oran = (df['2.5 Alt'].sum() / toplam_mac) * 100
+            c2.metric("2.5 Üst Yüzdesi", f"%{ust_oran:.1f}")
+            c3.metric("2.5 Alt Yüzdesi", f"%{alt_oran:.1f}")
+            
+        if 'MS_Sonuc' in df.columns:
+            ev_kazanma = (df['MS_Sonuc'] == '1').sum() / toplam_mac * 100
+            dep_kazanma = (df['MS_Sonuc'] == '2').sum() / toplam_mac * 100
+            c4.metric("Ev Sahibi Kazanma", f"%{ev_kazanma:.1f}")
+            c5.metric("Deplasman Kazanma", f"%{dep_kazanma:.1f}")
+    else:
+        st.warning("Filtreleme sonucunda maç bulunamadı.")
 
-    # Metrikler
-    st.metric("Filtrelenen Maç Sayısı", f"{len(df):,}")
+    st.markdown("---")
 
     # Ana Tablo
-    st.subheader("📊 Maç ve Oran Verileri")
-    st.dataframe(df.head(1000), use_container_width=True) # Sayfa kilitlenmesin diye ilk 1000 satırı gösterir, tümü indirilebilir
+    st.subheader("📊 Maç ve Oran Verileri Detayları")
+    st.dataframe(df.head(1000), use_container_width=True)
     if len(df) > 1000:
-        st.info("💡 Performans için ekranda ilk 1000 satır gösterilmektedir. Tüm filtrelenmiş veriyi aşağıdaki butondan indirebilirsiniz.")
+        st.info("💡 Performans için ilk 1000 satır gösteriliyor. Tamamını aşağıdaki butondan indirebilirsiniz.")
 
     # İndir
     csv_veri = df.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Filtrelenmiş 40K Veriyi İndir (CSV)", csv_veri, "filtrelenmis_oranlar.csv", "text/csv")
+    st.download_button("📥 Filtrelenmiş Veriyi İndir (CSV)", csv_veri, "detayli_analiz.csv", "text/csv")
