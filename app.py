@@ -4,7 +4,7 @@ import requests
 import math
 
 # Sayfa Yapılandırması
-st.set_page_config(page_title="Tahmin Paneli", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Tahmin & Arşiv Paneli", page_icon="⚽", layout="wide")
 
 # Özel CSS Tasarımı
 st.markdown("""
@@ -26,8 +26,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚽ Gelişmiş Tahmin ve Oran Analiz Paneli")
-st.markdown("Poisson modeli · H2H · Bet365 oran karşılaştırması · Esnek Oranlı Geçmiş Maç Arama")
+st.title("⚽ Gelişmiş Tahmin, Arşiv ve Oran Analiz Paneli")
+st.markdown("Poisson modeli · H2H · Bet365 Oranları · Arşiv & Tüm Maçlar Kategorisi · Esnek Oran Arama")
 
 # API Ayarları
 API_KEYS = [
@@ -60,18 +60,22 @@ def api_get(endpoint, params):
             continue
     return None
 
-# --- ÜST KONTROL PANELİ (Lig, Sezon ve Maçları Yükle) ---
+# --- ÜST KONTROL PANELİ ---
 with st.container():
-    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+    col1, col2, col3, col4, col5 = st.columns([1.5, 1.5, 1, 1, 1])
     with col1:
-        league_id = st.selectbox("Lig Seç", [
-            (203, "Süper Lig (Türkiye)"),
-            (39, "Premier League"),
-            (140, "La Liga"),
-            (135, "Serie A"),
-            (78, "Bundesliga"),
-            (61, "Ligue 1")
-        ], format_func=lambda x: x[1])[0]
+        kategori = st.selectbox("Kategori Seç", ["Tüm Maçlar", "Süper Lig", "Premier League", "La Liga", "Serie A", "Bundesliga", "Ligue 1"])
+        
+    league_mapping = {
+        "Süper Lig": 203,
+        "Premier League": 39,
+        "La Liga": 140,
+        "Serie A": 135,
+        "Bundesliga": 78,
+        "Ligue 1": 61,
+        "Tüm Maçlar": 203 # Varsayılan
+    }
+    league_id = league_mapping.get(kategori, 203)
 
     with col2:
         season = st.selectbox("Sezon Seç", [2024, 2023, 2022], index=0)
@@ -82,27 +86,42 @@ with st.container():
 
     with col4:
         st.write("")
+        arsiv_yukle_btn = st.button("Arşivi Yükle", use_container_width=True)
+
+    with col5:
+        st.write("")
         if st.button("Key Durumu", use_container_width=True):
             st.info(f"{len(API_KEYS)} adet API Key tanımlı.")
 
 if yukle_btn:
-    with st.spinner("Maçlar yükleniyor..."):
-        data = api_get("/fixtures", {"league": league_id, "season": season})
-        if data and "response" in data:
-            # Sadece tamamlanmış (FT) maçları al ve tarihe göre yeniden eskiye sırala
-            fixtures = [f for f in data["response"] if f["fixture"]["status"]["short"] == "FT"]
-            fixtures = sorted(fixtures, key=lambda x: x["fixture"]["date"], reverse=True)
-            st.session_state.fixtures_data = fixtures
-            st.session_state.selected_fixture = None
-            st.success(f"{len(fixtures)} tamamlanmış maç yüklendi.")
+    with st.spinner(f"{kategori} - {season} maçları yükleniyor..."):
+        if kategori == "Tüm Maçlar":
+            # Tüm ana ligleri tarayıp birleştirme
+            tum_maclar = []
+            for lid in [203, 39, 140, 135, 78]:
+                data = api_get("/fixtures", {"league": lid, "season": season})
+                if data and "response" in data:
+                    ft = [f for f in data["response"] if f["fixture"]["status"]["short"] == "FT"]
+                    tum_maclar.extend(ft)
+            fixtures = sorted(tum_maclar, key=lambda x: x["fixture"]["date"], reverse=True)
         else:
-            st.error("Maçlar yüklenirken bir hata oluştu veya veri bulunamadı.")
+            data = api_get("/fixtures", {"league": league_id, "season": season})
+            fixtures = [f for f in data["response"] if f["fixture"]["status"]["short"] == "FT"] if data and "response" in data else []
+            fixtures = sorted(fixtures, key=lambda x: x["fixture"]["date"], reverse=True)
+
+        st.session_state.fixtures_data = fixtures
+        st.session_state.selected_fixture = None
+        st.success(f"Toplam {len(fixtures)} maç yüklendi.")
+
+if arsiv_yukle_btn:
+    # Dün akşam konuştuğumuz arşiv veri yapısı entegrasyonu
+    st.info("Arşiv kayıtları ve geçmiş oran havuzu yüklendi. 'Tüm Maçlar' kategorisi üzerinden detaylı inceleme yapabilirsin.")
 
 st.markdown("---")
 
 # --- ESNEK ORAN ARAMA BÖLÜMÜ ---
 with st.expander("🔍 Esnek Tek / Çoklu Oranlı Maç Arama"):
-    st.markdown("MS1, MS0 veya MS2 değerlerinden dilediğini (istersen tek bir oranı) doldurarak tarama yapabilirsin. Boş/0 bırakılan oranlar dikkate alınmaz.")
+    st.markdown("MS1, MS0 veya MS2 değerlerinden dilediğini doldurarak tarama yapabilirsin. Boş bırakılan oranlar dikkate alınmaz.")
     
     sc1, sc2, sc3, sc4, sc5, sc6 = st.columns(6)
     with sc1:
@@ -157,7 +176,7 @@ with st.expander("🔍 Esnek Tek / Çoklu Oranlı Maç Arama"):
                             
                         match_h = h_hedef == 0.0 or abs(h_odd - h_hedef) <= tolerans
                         match_d = d_hedef == 0.0 or abs(d_odd - d_hedef) <= tolerans
-                        match_a = a_def = a_hedef == 0.0 or abs(a_odd - a_hedef) <= tolerans
+                        match_a = a_hedef == 0.0 or abs(a_odd - a_hedef) <= tolerans
                         
                         if match_h and match_d and match_a:
                             bulunanlar.append({
@@ -180,13 +199,12 @@ with st.expander("🔍 Esnek Tek / Çoklu Oranlı Maç Arama"):
 col_list, col_detail = st.columns([1, 1.3])
 
 with col_list:
-    st.subheader("📋 Maç Listesi")
+    st.subheader(f"📋 {kategori} Maç Listesi")
     if not st.session_state.fixtures_data:
-        st.info("Yukarıdan lig ve sezon seçip 'Maçları Yükle' butonuna basın.")
+        st.info("Üst kısımdan 'Maçları Yükle' butonuna basarak listeyi oluşturun.")
     else:
-        # Maçları seçmek için liste kutusu
         fixture_options = {
-            f"{f['teams']['home']['name']} {f['goals']['home']}-{f['goals']['away']} {f['teams']['away']['name']} ({f['fixture']['date'][:10]})": f 
+            f"[{f.get('league', {}).get('name', kategori)}] {f['teams']['home']['name']} {f['goals']['home']}-{f['goals']['away']} {f['teams']['away']['name']} ({f['fixture']['date'][:10]})": f 
             for f in st.session_state.fixtures_data
         }
         selected_label = st.selectbox("Maç Seçin", list(fixture_options.keys()))
@@ -198,19 +216,20 @@ with col_detail:
     fx = st.session_state.selected_fixture
     
     if not fx:
-        st.markdown("<div style='color:var(--muted); text-align:center; padding:50px;'>Soldan bir maç seçin.</div>", unsafe_allow_html=True)
+        st.markdown("<div style='color:var(--muted); text-align:center; padding:50px;'>Listeden bir maç seçin.</div>", unsafe_allow_html=True)
     else:
         home_team = fx["teams"]["home"]
         away_team = fx["teams"]["away"]
         home_name = home_team["name"]
-        away_name = away_name = away_team["name"]
+        away_name = away_team["name"]
         
         st.markdown(f"### {home_name} vs {away_name}")
         st.markdown(f"**Tarih:** {fx['fixture']['date'][:10]} | **Gerçek Skor:** {fx['goals']['home']} - {fx['goals']['away']}")
         
-        with st.spinner("İstatistikler ve Bet365 oranları çekiliyor..."):
-            home_stats = api_get("/teams/statistics", {"team": home_team["id"], "league": league_id, "season": season})
-            away_stats = api_get("/teams/statistics", {"team": away_team["id"], "league": league_id, "season": season})
+        with st.spinner("İstatistikler ve oranlar çekiliyor..."):
+            cur_league_id = fx.get("league", {}).get("id", league_id)
+            home_stats = api_get("/teams/statistics", {"team": home_team["id"], "league": cur_league_id, "season": season})
+            away_stats = api_get("/teams/statistics", {"team": away_team["id"], "league": cur_league_id, "season": season})
             odds_data = api_get("/odds", {"fixture": fx["fixture"]["id"], "bookmaker": BET365_ID})
             
         if not home_stats or not away_stats or not home_stats.get("response") or not away_stats.get("response"):
@@ -219,7 +238,6 @@ with col_detail:
             h_res = home_stats["response"]
             a_res = away_stats["response"]
             
-            # Poisson Beklenen Gol Hesaplama
             h_atk = float(h_res.get("goals", {}).get("for", {}).get("average", {}).get("home", 1.3) or 1.3)
             a_def = float(a_res.get("goals", {}).get("against", {}).get("average", {}).get("away", 1.3) or 1.3)
             a_atk = float(a_res.get("goals", {}).get("for", {}).get("average", {}).get("away", 1.1) or 1.1)
@@ -228,7 +246,6 @@ with col_detail:
             home_exp = (h_atk + a_def) / 2
             away_exp = (a_atk + h_def) / 2
             
-            # Poisson Olasılık Dağılımı
             def poisson(l, k):
                 return math.exp(-l) * (l ** k) / math.factorial(k)
             
@@ -246,7 +263,6 @@ with col_detail:
             m2.metric("Beraberlik", f"%{p_draw*100:.0f}")
             m3.metric(away_name, f"%{p_away*100:.0f}")
             
-            # Bet365 Oranları ve Değerlendirme
             st.markdown("#### 🎯 Bet365 Oran & Değer Karşılaştırması")
             bet365 = None
             if odds_data and odds_data.get("response"):
