@@ -1,39 +1,86 @@
 import streamlit as st
 import pandas as pd
-import glob
-import os
+import requests
 
 # Sayfa Ayarları
-st.set_page_config(page_title="Süper Lig Oran Analiz Paneli", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Süper Lig Oran ve Analiz Paneli", page_icon="⚽", layout="wide")
 
-st.title("⚽ Türkiye Süper Lig - Oran ve Analiz Paneli")
+st.title("⚽ Türkiye Süper Lig - Canlı Oran ve Analiz Paneli")
 st.markdown("---")
 
-# CSV Dosyası Kontrolü
-if os.path.exists("oran_analiz.csv"):
-    df = pd.read_csv("oran_analiz.csv")
-    st.sidebar.success("✅ Gerçek 'oran_analiz.csv' dosyası yüklendi!")
-else:
-    st.sidebar.warning("⚠️ 'oran_analiz.csv' henüz bulunamadı. Yedek mod aktif.")
-    # Dosya yoksa bile çökmemesi için boş/örnek şema
-    df = pd.DataFrame(columns=['Sezon', 'Tarih', 'Ev Sahibi', 'Deplasman', 'IY/MS', 'MS_Ev', 'MS_Dep'])
+# API-Football Pro Bilgileri (Sana özel gömülü sistem)
+API_KEY = "6872ad88365b79a00040ce0ce9c7ab6a"
+BASE_URL = "https://v3.football.api-sports.io/fixtures"
+LEAGUE_ID = 203
+sezonlar = [2021, 2022, 2023, 2024, 2025, 2026]
 
-# Arama ve Filtreleme
+headers = {
+    'x-apisports-key': API_KEY
+}
+
+# Verileri önbelleğe alarak API'yi yormayan ve hızlı açılan sistem
+@st.cache_data(show_spinner="⚽ Süper Lig maçları API-Football'dan yükleniyor, lütfen bekleyin...")
+def verileri_getir():
+    tum_maclar = []
+    for sezon in sezonlar:
+        params = {
+            "league": LEAGUE_ID,
+            "season": sezon
+        }
+        try:
+            response = requests.get(BASE_URL, headers=headers, params=params, timeout=10)
+            if response.status_code == 200:
+                veri = response.json()
+                fixtures = veri.get("response", [])
+                for match in fixtures:
+                    mac_detay = {
+                        'Sezon': f"{sezon}-{sezon+1}",
+                        'Tarih': match.get('fixture', {}).get('date', '')[:10],
+                        'Ev Sahibi': match.get('teams', {}).get('home', {}).get('name'),
+                        'Deplasman': match.get('teams', {}).get('away', {}).get('name'),
+                        'IY_Ev': match.get('score', {}).get('halftime', {}).get('home'),
+                        'IY_Dep': match.get('score', {}).get('halftime', {}).get('away'),
+                        'MS_Ev': match.get('score', {}).get('fulltime', {}).get('home'),
+                        'MS_Dep': match.get('score', {}).get('fulltime', {}).get('away'),
+                    }
+                    tum_maclar.append(mac_detay)
+        except Exception:
+            continue
+            
+    if tum_maclar:
+        df = pd.DataFrame(tum_maclar)
+        # İY/MS Hesaplama
+        df['İY/MS'] = df.apply(lambda r: f"{'1' if r['IY_Ev'] > r['IY_Dep'] else ('2' if r['IY_Ev'] < r['IY_Dep'] else '0')}/"
+                                                    f"{'1' if r['MS_Ev'] > r['MS_Dep'] else ('2' if r['MS_Ev'] < r['MS_Dep'] else '0')}" 
+                                                    if pd.notnull(r['IY_Ev']) and pd.notnull(r['MS_Ev']) else "-", axis=1)
+        return df
+    else:
+        return pd.DataFrame(columns=['Sezon', 'Tarih', 'Ev Sahibi', 'Deplasman', 'İY/MS', 'MS_Ev', 'MS_Dep'])
+
+# Veriyi Yükle
+df = verileri_getir()
+
+# Sol Menü Filtreleri
 st.sidebar.header("🔍 Filtreler")
-aranan = st.sidebar.text_input("Takım Ara:")
+aranan = st.sidebar.text_input("Takım Ara (Örn: Galatasaray):")
 
 if aranan and not df.empty:
-    df = df[df.astype(str).apply(lambda x: x.str.contains(aranan, case=False)).any(axis=1)]
+    df = df[df['Ev Sahibi'].str.contains(aranan, case=False, na=False) | 
+            df['Deplasman'].str.contains(aranan, case=False, na=False)]
 
-# Ana ekran göstergeleri
+# Üst Metrikler
 c1, c2 = st.columns(2)
 c1.metric("Toplam Maç Sayısı", f"{len(df):,}")
 
 st.markdown("---")
 
 # Tablo
-st.subheader("📊 Maç Verileri")
+st.subheader("📊 Maç ve Skor Listesi")
 if not df.empty:
-    st.dataframe(df.head(1000), use_container_width=True)
+    st.dataframe(df, use_container_width=True, height=500)
 else:
-    st.info("Henüz görüntülenecek veri yok. Bilgisayarında veri botunu çalıştırıp `oran_analiz.csv` dosyasını GitHub'a yüklediğinde veriler burada belirecek.")
+    st.warning("Veriler yüklenirken bir bağlantı sorunu oluştu.")
+
+# İndir
+csv_veri = df.to_csv(index=False).encode('utf-8')
+st.download_button("📥 Verileri İndir (CSV)", csv_veri, "super_lig_analiz.csv", "text/csv")
