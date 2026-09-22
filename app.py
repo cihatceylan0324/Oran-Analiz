@@ -1,79 +1,52 @@
-import streamlit as st
+import time
+import random
 import pandas as pd
-import glob
+import requests
 
-# Sayfa Ayarları
-st.set_page_config(page_title="Süper Lig Gerçek Oran Analiz Paneli", page_icon="⚽", layout="wide")
+# Örnek olarak sezon bazlı liste (İstediğin kaynak veya siteye göre uyarlanabilir)
+sezonlar = ["2021-2022", "2022-2023", "2023-2024", "2024-2025", "2025-2026"]
+dosya_adi = "oran_analiz.csv"
 
-st.title("⚽ Türkiye Süper Lig - Gerçek Oran ve İstatistik Paneli")
-st.markdown("---")
+print("🚀 Güvenli veri toplama süreci başlatıldı (Anti-ban mod aktif)...")
 
-# Depodaki CSV dosyalarını bul
-dosyalar = glob.glob("*.csv")
+tum_veriler = []
 
-if not dosyalar:
-    st.error("⚠️ Depoda hiç CSV dosyası bulunamadı! Lütfen CSV dosyasını GitHub deposuna yükle.")
+for sezon in sezonlar:
+    print(f"📥 {sezon} sezonu verileri çekiliyor...")
+    
+    try:
+        # BURAYA Veriyi çekeceğin kaynak API veya URL gelecek
+        # Örnek simülasyon (Gerçek çekim kodunu buraya entegre edeceğiz)
+        # url = f"https://ornek-kaynak.com/api?season={sezon}"
+        # response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+        
+        # Dikkat çekmemek için her istek arasında rastgele bekleme (3 ile 7 saniye arası)
+        bekleme_suresi = random.uniform(3.0, 7.0)
+        print(f"⏳ Güvenlik için {bekleme_suresi:.1f} saniye bekleniyor...")
+        time.sleep(bekleme_suresi)
+        
+        # Simüle edilmiş parça veri (Burada gerçek çektiğin veriyi işleyeceksin)
+        parca_df = pd.DataFrame({
+            'Sezon': [sezon] * 10,
+            'Ev Sahibi': [f"Takim_A_{i}" for i in range(10)],
+            'Deplasman': [f"Takim_B_{i}" for i in range(10)],
+            'MS_1': [round(random.uniform(1.40, 3.50), 2) for _ in range(10)],
+            'MS_0': [round(random.uniform(3.10, 3.60), 2) for _ in range(10)],
+            'MS_2': [round(random.uniform(1.80, 4.50), 2) for _ in range(10)]
+        })
+        
+        # Parçayı ana listeye ekle
+        tum_veriler.append(parca_df)
+        print(f"✅ {sezon} sezonu başarıyla eklendi.")
+        
+    except Exception as e:
+        print(f"⚠️ Hata oluştu ({sezon}): {e}")
+        continue
+
+# Hepsini tek bir CSV'de birleştir ve kaydet
+if tum_veriler:
+    final_df = pd.concat(tum_veriler, ignore_index=True)
+    final_df.to_csv(dosya_adi, index=False, encoding='utf-8')
+    print(f"\n🎉 İşlem tamam! Toplam {len(final_df)} maç '{dosya_adi' dosyasına kaydedildi.")
 else:
-    # Sol Menüden Dosya Seçimi
-    st.sidebar.header("⚙️ Veri ve Oran Filtreleri")
-    secilen_dosya = st.sidebar.selectbox("CSV Dosyası Seç", dosyalar)
-    
-    @st.cache_data
-    def veri_yukle(dosya_adi):
-        return pd.read_csv(dosya_adi)
-    
-    with st.spinner("Veri seti yükleniyor..."):
-        df = veri_yukle(secilen_dosya)
-    
-    st.success(f"📂 Yüklenen Dosya: {secilen_dosya} | Toplam Maç: {len(df):,}")
-    
-    # Oran sütunlarını otomatik tespit et (B365H, B365D, B365A, Avg, Odd vb.)
-    oran_adaylari = [col for col in df.columns if any(o in col.lower() for o in ['b365', 'ps', 'max', 'avg', 'odd', 'oran', 'h', 'd', 'a'])]
-    
-    # Takım Arama
-    aranan = st.sidebar.text_input("🔍 Takım Ara (Ev Sahibi / Deplasman):")
-    if aranan:
-        ev_col = next((col for col in ['HomeTeam', 'Ev Sahibi', 'ev_sahibi', 'Team1'] if col in df.columns), None)
-        dep_col = next((col for col in ['AwayTeam', 'Deplasman', 'deplasman', 'Team2'] if col in df.columns), None)
-        
-        if ev_col and dep_col:
-            df = df[df[ev_col].str.contains(aranan, case=False, na=False) | 
-                    df[dep_col].str.contains(aranan, case=False, na=False)]
-        else:
-            df = df[df.astype(str).apply(lambda x: x.str.contains(aranan, case=False)).any(axis=1)]
-
-    # --- ORAN İSTATİSTİKLERİ BÖLÜMÜ ---
-    st.subheader("📊 Gerçek Oran İstatistikleri ve Ortalamalar")
-    
-    toplam_mac = len(df)
-    if toplam_mac > 0:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Filtrelenen Maç Sayısı", f"{toplam_mac:,}")
-        
-        # Dosyadaki olası oran kolonlarını bulup ortalamalarını gösterelim
-        bulunan_oranlar = [c for c in df.columns if df[c].dtype in ['float64', 'int64'] and any(k in c.lower() for k in ['h', 'd', 'a', '1', '2', 'oran', 'odd', 'avg', 'b365'])]
-        
-        if bulunan_oranlar:
-            st.info(f"💡 Tespit Edilen Oran / Sayısal Sütunlar: {', '.join(bulunan_oranlar[:6])}")
-            
-            # İlk 2-3 oran sütununun ortalamasını göster
-            col_list = st.columns(min(len(bulunan_oranlar), 3))
-            for i, col_name in enumerate(bulunan_oranlar[:3]):
-                ortalama_deger = df[col_name].mean()
-                col_list[i].metric(f"Ortalama ({col_name})", f"{ortalama_deger:.2f}")
-        else:
-            st.warning("Bu veri setinde standart oran sütunları (B365H, Avg vb.) doğrudan tespit edilemedi. Ancak veriler aşağıdadır.")
-    else:
-        st.warning("Filtreleme sonucunda maç bulunamadı.")
-
-    st.markdown("---")
-
-    # Ana Tablo
-    st.subheader("📋 Maç ve Oran Verileri Tablosu")
-    st.dataframe(df.head(1000), use_container_width=True)
-    if len(df) > 1000:
-        st.info("💡 Performans için ilk 1000 satır gösteriliyor. Tümünü aşağıdaki butondan indirebilirsiniz.")
-
-    # İndir
-    csv_veri = df.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Tüm Veriyi İndir (CSV)", csv_veri, "oranlar_analiz.csv", "text/csv")
+    print("❌ Hiç veri alınamadı.")
