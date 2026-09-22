@@ -13,13 +13,13 @@ API_KEY = "6872ad88365b79a00040ce0ce9c7ab6a"
 BASE_URL = "https://v3.football.api-sports.io/fixtures"
 ODDS_URL = "https://v3.football.api-sports.io/odds"
 LEAGUE_ID = 203
-sezonlar = [2024, 2025]  # Şimdilik en güncel sezonlar (hızlı ve sorunsuz açılması için)
+sezonlar = [2024, 2025]  # Test için güncel sezonlar
 
 headers = {
     'x-apisports-key': API_KEY
 }
 
-@st.cache_data(show_spinner="⚽ Maçlar ve oranlar yükleniyor, lütfen bekleyin...")
+@st.cache_data(show_spinner="⚽ Maçlar ve tüm oran sayfaları yükleniyor, lütfen bekleyin...")
 def verileri_getir():
     tum_maclar = []
     for sezon in sezonlar:
@@ -32,29 +32,47 @@ def verileri_getir():
             if response.status_code == 200:
                 fixtures = response.json().get("response", [])
                 
-                # Toplu oran çekme
-                odds_params = {
-                    "league": LEAGUE_ID,
-                    "season": sezon
-                }
-                odds_resp = requests.get(ODDS_URL, headers=headers, params=odds_params, timeout=15)
+                # --- SAYFALAMA (PAGINATION) İLE TÜM ORANLARI ÇEKME ---
                 odds_dict = {}
+                page = 1
+                total_pages = 1
                 
-                if odds_resp.status_code == 200:
-                    odds_data = odds_resp.json().get("response", [])
-                    for odd_item in odds_data:
-                        f_id = odd_item.get('fixture', {}).get('id')
-                        bookmakers = odd_item.get("bookmakers", [])
-                        if bookmakers:
-                            bets = bookmakers[0].get("bets", [])
-                            for bet in bets:
-                                if bet.get("id") == 1:  # 1X2 Oranları
-                                    o1, o0, o2 = None, None, None
-                                    for val in bet.get("values", []):
-                                        if val.get("value") == "Home": o1 = val.get("odd")
-                                        elif val.get("value") == "Draw": o0 = val.get("odd")
-                                        elif val.get("value") == "Away": o2 = val.get("odd")
-                                    odds_dict[f_id] = {'MS_1': o1, 'MS_0': o0, 'MS_2': o2}
+                while page <= total_pages:
+                    odds_params = {
+                        "league": LEAGUE_ID,
+                        "season": sezon,
+                        "page": page
+                    }
+                    odds_resp = requests.get(ODDS_URL, headers=headers, params=odds_params, timeout=15)
+                    if odds_resp.status_code == 200:
+                        res_json = odds_resp.json()
+                        paging = res_json.get("paging", {})
+                        total_pages = paging.get("total", 1)
+                        
+                        odds_data = res_json.get("response", [])
+                        for odd_item in odds_data:
+                            f_id = odd_item.get('fixture', {}).get('id')
+                            bookmakers = odd_item.get("bookmakers", [])
+                            if bookmakers:
+                                # Bahis şirketi seçimi (Örn: Bet365 veya ilk bulunan)
+                                target_bm = bookmakers[0]
+                                for bm in bookmakers:
+                                    if bm.get("id") == 8:  # Bet365 ID genelde 8'dir
+                                        target_bm = bm
+                                        break
+                                        
+                                bets = target_bm.get("bets", [])
+                                for bet in bets:
+                                    if bet.get("id") == 1:  # 1X2 Oranları
+                                        o1, o0, o2 = None, None, None
+                                        for val in bet.get("values", []):
+                                            if val.get("value") == "Home": o1 = val.get("odd")
+                                            elif val.get("value") == "Draw": o0 = val.get("odd")
+                                            elif val.get("value") == "Away": o2 = val.get("odd")
+                                        odds_dict[f_id] = {'MS_1': o1, 'MS_0': o0, 'MS_2': o2}
+                        page += 1
+                    else:
+                        break
 
                 for match in fixtures:
                     f_id = match.get('fixture', {}).get('id')
@@ -83,7 +101,6 @@ def verileri_getir():
             
     if tum_maclar:
         df = pd.DataFrame(tum_maclar)
-        # Güvenli İY/MS Hesaplama
         def hesapla_iyms(r):
             ie = r.get('İY_Ev')
             id_ = r.get('İY_Dep')
