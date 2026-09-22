@@ -1,52 +1,56 @@
 import time
 import random
-import pandas as pd
 import requests
+import pandas as pd
 
-# Örnek olarak sezon bazlı liste (İstediğin kaynak veya siteye göre uyarlanabilir)
-sezonlar = ["2021-2022", "2022-2023", "2023-2024", "2024-2025", "2025-2026"]
+# API Bilgileri (Kullandığın API'nin endpoint ve key bilgilerini buraya yazacaksın)
+API_KEY = "BURAYA_API_KEY_GIRIN"
+BASE_URL = "https://api.ornek-futbol-api.com/v1/matches" # Kendi API adresin
+
+# Türkiye Süper Lig Sezon ID'leri veya Yılları
+sezonlar = [2021, 2022, 2023, 2024, 2025]
 dosya_adi = "oran_analiz.csv"
 
-print("🚀 Güvenli veri toplama süreci başlatıldı (Anti-ban mod aktif)...")
+print("🛡️ Anti-Ban korumalı güvenli veri toplama botu başlatıldı...")
 
 tum_veriler = []
 
 for sezon in sezonlar:
-    print(f"📥 {sezon} sezonu verileri çekiliyor...")
+    print(f"📥 {sezon} - {sezon+1} sezonu verileri çekiliyor...")
+    
+    params = {
+        "league": "turkey-super-lig",
+        "season": sezon,
+        "api_key": API_KEY
+    }
     
     try:
-        # BURAYA Veriyi çekeceğin kaynak API veya URL gelecek
-        # Örnek simülasyon (Gerçek çekim kodunu buraya entegre edeceğiz)
-        # url = f"https://ornek-kaynak.com/api?season={sezon}"
-        # response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+        response = requests.get(BASE_URL, params=params, headers={"User-Agent": "Mozilla/5.0"})
         
-        # Dikkat çekmemek için her istek arasında rastgele bekleme (3 ile 7 saniye arası)
-        bekleme_suresi = random.uniform(3.0, 7.0)
-        print(f"⏳ Güvenlik için {bekleme_suresi:.1f} saniye bekleniyor...")
-        time.sleep(bekleme_suresi)
-        
-        # Simüle edilmiş parça veri (Burada gerçek çektiğin veriyi işleyeceksin)
-        parca_df = pd.DataFrame({
-            'Sezon': [sezon] * 10,
-            'Ev Sahibi': [f"Takim_A_{i}" for i in range(10)],
-            'Deplasman': [f"Takim_B_{i}" for i in range(10)],
-            'MS_1': [round(random.uniform(1.40, 3.50), 2) for _ in range(10)],
-            'MS_0': [round(random.uniform(3.10, 3.60), 2) for _ in range(10)],
-            'MS_2': [round(random.uniform(1.80, 4.50), 2) for _ in range(10)]
-        })
-        
-        # Parçayı ana listeye ekle
-        tum_veriler.append(parca_df)
-        print(f"✅ {sezon} sezonu başarıyla eklendi.")
-        
+        if response.status_code == 200:
+            veri = response.json()
+            df_parca = pd.DataFrame(veri.get("response", []))
+            
+            if not df_parca.empty:
+                tum_veriler.append(df_parca)
+                print(f"✅ {sezon} sezonundan {len(df_parca)} maç başarıyla alındı.")
+            else:
+                print(f"⚠️ {sezon} sezonunda veri bulunamadı.")
+        else:
+            print(f"❌ API Hatası (Kod: {response.status_code})")
+            
     except Exception as e:
-        print(f"⚠️ Hata oluştu ({sezon}): {e}")
-        continue
+        print(f"⚠️ Bağlantı hatası: {e}")
+        
+    bekleme = random.uniform(4.0, 9.0)
+    print(f"⏳ Güvenlik uyarısı: {bekleme:.1f} saniye bekleniyor...\n")
+    time.sleep(bekleme)
 
-# Hepsini tek bir CSV'de birleştir ve kaydet
+# Toplanan tüm verileri tek dosyada birleştir
 if tum_veriler:
     final_df = pd.concat(tum_veriler, ignore_index=True)
     final_df.to_csv(dosya_adi, index=False, encoding='utf-8')
-    print(f"\n🎉 İşlem tamam! Toplam {len(final_df)} maç '{dosya_adi' dosyasına kaydedildi.")
+    print(f"\n🎉 İşlem tamam! Toplam {len(final_df)} maç '{dosya_adi}' dosyasına kaydedildi.")
+    print("Artık bu dosyayı GitHub deposuna yükleyebilirsin.")
 else:
-    print("❌ Hiç veri alınamadı.")
+    print("❌ Hiçbir veri kaydedilemedi.")
